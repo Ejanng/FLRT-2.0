@@ -89,234 +89,186 @@ Main resources:
 ---
 
 ## 3. Installation
+## **Windows Installation**
 
-### 3.1. Common (Linux & Windows)
+### **Prerequisites**
+```
+Windows 10/11 (64-bit recommended)
+Any webcam (built-in laptop camera works)
+```
 
-Create a virtual environment and install dependencies:
+### **Step 1: Install Python 3**
+1. Go to https://www.python.org/downloads/
+2. Download **"Windows installer (64-bit)"** 
+3. **IMPORTANT**: Check **"Add Python to PATH"** during installation
+4. Click **"Install Now"**
+
+### **Step 2: Create Project**
+```cmd
+REM Open Command Prompt as Administrator
+mkdir C:\SIFT
+cd C:\SIFT
+```
+
+### **Step 3: Setup Virtual Environment**
+```cmd
+REM Create virtual environment
+python -m venv sift_env
+
+REM Activate (Command Prompt)
+sift_env\Scripts\activate.bat
+
+REM Activate (PowerShell)
+# sift_env\Scripts\Activate.ps1
+```
+
+### **Step 4: Install Dependencies**
+```cmd
+pip install --upgrade pip
+pip install opencv-contrib-python==4.8.1.78 numpy matplotlib
+```
+
+### **Step 5: Create Folders**
+```cmd
+mkdir res
+mkdir res\train
+```
+
+### **Step 6: Test Installation**
+```cmd
+REM Copy your sift_db_train.py to C:\SIFT\
+python sift_db_train.py --mode detect_live
+```
+
+**Expected Output:**
+```
+✅ Loaded database: X objects
+🔍 Live Detection - Press 'q' to quit
+[Live camera window opens!]
+```
+
+---
+
+## 🐧 **Linux Installation (Ubuntu/Debian)**
 
 ```bash
-# Create virtual environment
-python -m venv ~/sift_env
-
-# Activate (Linux/macOS)
-source ~/sift_env/bin/activate
-
-# Activate (Windows PowerShell)
-# .\sift_env\Scripts\Activate.ps1
+# Update system
+sudo apt update && sudo apt upgrade -y
 
 # Install dependencies
-pip install opencv-contrib-python numpy matplotlib
-```
+sudo apt install python3 python3-pip python3-venv python3-opencv libopencv-dev v4l-utils -y
 
-Clone or copy the project:
+# Create project
+mkdir ~/SIFT && cd ~/SIFT
 
-```bash
-# Example Linux layout
-cd ~/Desktop
-git clone https://github.com/OpenGenus/SIFT-Scale-Invariant-Feature-Transform.git
-cd SIFT-Scale-Invariant-Feature-Transform
-# Place your modified sift_db_train.py in ./src if not already there
+# Setup virtual environment
+python3 -m venv sift_env
+source sift_env/bin/activate
+
+# Install Python packages
+pip install opencv-contrib-python==4.8.1.78 numpy matplotlib
+
+# Create folders
 mkdir -p res/train
+
+# Test
+python3 sift_db_train.py --mode detect_live
 ```
 
-Ensure the paths in `sift_db_train.py` match your layout, for example:
+---
 
+## 📱 **Quick Start Commands** (All OS)
+
+```bash
+# Activate environment (run every session)
+# Windows: sift_env\Scripts\activate.bat
+# Linux:   source sift_env/bin/activate
+
+# 1. TRAIN objects from camera
+python3 sift_db_train.py --mode train_live
+# Press 's' to capture objects, 'q' to save database
+
+# 2. LIVE DETECTION
+python3 sift_db_train.py --mode detect_live
+# Press 'q' to quit - shows matches with bounding boxes!
+
+# 3. Test single image
+python3 sift_db_train.py --mode detect --test_img res/train/object_000.jpg
+
+# 4. Train from folder
+python3 sift_db_train.py --mode train_files
+```
+
+---
+
+## 🎮 **Controls**
+
+**Training (`train_live`):**
+- `s` = Capture & save current object to database
+- `q` = Quit & save database
+
+**Detection (`detect_live`):**
+- `q` = Quit live detection
+
+---
+
+## 📁 **Files Created**
+
+```
+res/
+├── train/                 # Training images (object_001.jpg, etc.)
+└── sift_database.pkl      # SIFT feature database (persistent!)
+```
+
+---
+
+## 🛠️ **Troubleshooting**
+
+### **Camera not working**
+```cmd
+# Try camera index 1
+# Edit: cap = cv2.VideoCapture(1)
+
+# Windows: No permissions needed
+# Linux: sudo usermod -a -G video $USER (then logout)
+```
+
+### **SIFT not found**
+```cmd
+pip uninstall opencv-contrib-python opencv-python
+pip install opencv-contrib-python==4.8.1.78
+```
+
+### **Linux Wayland warnings**
+```bash
+QT_QPA_PLATFORM=xcb python3 sift_db_train.py --mode detect_live
+```
+
+### **Database overwritten**
+Ensure `train_live` **appends** to existing database:
 ```python
-DB_FILE = "../res/sift_database.pkl"
-# Training images read from ../res/train/
+existing_db = load_database()
+existing_db.extend(new_objects)
+pickle.dump(existing_db, f)
 ```
 
 ---
 
-## 4. Usage
+## 🎯 **Expected Results**
 
-### 4.1. Activate Environment
-
-Every new terminal/session:
-
-```bash
-# Linux/macOS
-source ~/sift_env/bin/activate
-
-# Windows PowerShell
-# .\sift_env\Scripts\Activate.ps1
-```
-
-Change to the project `src` directory:
-
-```bash
-cd /path/to/SIFT-Scale-Invariant-Feature-Transform/src
-```
+1. **Training**: Press `s` → `✅ SAVED 'object_001.jpg' (245 descriptors)`
+2. **Detection**: Hold object → **GREEN BOX** + `"MATCH: object_001 (45 pts)"`
+3. **Database**: Multiple runs → All objects preserved
 
 ---
 
-### 4.2. Live Training Mode (`train_live`)
+## 📄 **License**
 
-Use the webcam to capture and store objects into the SIFT database.
+- **SIFT**: David G. Lowe (algorithm - cite paper for academic use)
+- **OpenCV**: Apache 2.0
+- **Base code**: GPL-3.0 (OpenGenus repo)
+- **This wrapper**: MIT (modifications only)
 
-```bash
-python3 sift_db_train.py --mode train_live
-```
+**Retain all credits above when redistributing.**
 
-Controls:
 
-- `s` – Capture current object:
-  - Automatically crops the detected object region
-  - Saves the cropped image into `../res/train/`
-  - Extracts SIFT descriptors and **appends** them to the database
-- `q` – Quit training:
-  - Writes/updates `../res/sift_database.pkl` with all objects seen this session (plus any previously saved objects, if implemented as append)
-
-Notes:
-
-- The script generally:
-  - Converts each frame to grayscale
-  - Optionally isolates the main object via contour/threshold logic
-  - Extracts SIFT descriptors from the cropped region
-- You may train multiple objects over multiple runs; the database can be updated to **append** rather than overwrite (depending on your final code version).
-
----
-
-### 4.3. File Training Mode (`train_files`)
-
-Build the database from existing images in a folder.
-
-```bash
-python3 sift_db_train.py --mode train_files
-```
-
-Behavior:
-
-- Scans `../res/train/` for `.jpg`, `.jpeg`, `.png` files
-- Extracts SIFT descriptors from each
-- Saves resulting database into `../res/sift_database.pkl`
-
-Usage tips:
-
-- Place one clear image per object in `res/train/`
-- The more textured the object, the better SIFT performs
-
----
-
-### 4.4. Detect from Static Image (`detect`)
-
-Match a single test image against the trained database.
-
-```bash
-python3 sift_db_train.py --mode detect --test_img ../res/train/object_000_xxx.jpg
-```
-
-Behavior:
-
-- Loads `../res/sift_database.pkl`
-- Computes SIFT descriptors of the test image
-- Matches against each database entry (FLANN + ratio test)
-- Reports best match and number of good matches
-- Optionally visualizes overlays/bounding boxes (depending on your code version)
-
----
-
-### 4.5. Live Detection Mode (`detect_live`)
-
-Run SIFT matching in real time from the camera.
-
-```bash
-python3 sift_db_train.py --mode detect_live
-```
-
-Typical behavior (depending on your chosen variant):
-
-- Opens the default camera (`VideoCapture(0)`)
-- Extracts SIFT features for each frame
-- Matches against all database entries via FLANN
-- Displays:
-  - Live video
-  - Best match name & match score (good matches count)
-  - Optionally:
-    - A bounding box / quadrilateral around the detected instance  
-      (e.g., via homography + `cv2.perspectiveTransform` or via `cv2.boundingRect` of matched points)
-
-Controls:
-
-- `q` – Quit live detection
-
-Performance notes:
-
-- Full-frame SIFT + matching is expensive:
-  - You can downscale frames
-  - Or run SIFT every N frames (e.g., every 3–5 frames)
-- Bounding boxes based on homography are more precise but heavier than simple text overlays.
-
----
-
-## 5. Data & Persistence
-
-- **Image storage**:
-  - Cropped training images are saved to `res/train/`
-- **Database storage**:
-  - SIFT descriptors and associated object names are stored in `res/sift_database.pkl` using Python’s `pickle`.
-- **Persistence behavior** (depending on your final implementation):
-  - `train_live` can be configured to:
-    - **Overwrite** the database with only current session objects, or
-    - **Append** current session objects to a previously saved database (load, extend, save).
-
----
-
-## 6. Known Issues & Tips
-
-- **Black camera window / no video**:
-  - Check the camera index (`cv2.VideoCapture(0)` vs `1`)
-  - On Linux/Wayland, you may need:
-    - `QT_QPA_PLATFORM=xcb python3 sift_db_train.py --mode detect_live`
-- **Database getting overwritten**:
-  - Ensure your `train_live` saving logic:
-    - Loads the existing DB via `load_database()`
-    - Extends it with new objects
-    - Writes back the combined list
-- **Pickle errors (`EOFError`, `cannot pickle 'cv2.KeyPoint'`)**:
-  - Save only descriptors and minimal metadata (e.g., `(img_name, desc)`), not raw `cv2.KeyPoint` objects.
-  - Ensure the file is fully written before reuse.
-
----
-
-## 7. License & Attribution
-
-This project is a derivative work built on top of:
-
-- OpenCV (Apache 2.0 license)
-- `OpenGenus/SIFT-Scale-Invariant-Feature-Transform` (GPL-3.0)
-- SIFT algorithm by David G. Lowe (patent has expired; algorithm is widely used, but always credit the original paper in academic or research use)
-
-When using or redistributing this project:
-
-- **Retain all credit statements** above.
-- **Respect the most restrictive license in the chain** (GPL-3.0 from the original repo), unless you fully reimplement the SIFT detection/matching logic from scratch under another license.
-- When publishing research or results, cite:
-  - Lowe’s original SIFT paper
-  - OpenCV (if used)
-  - The original repository and any other libraries/tools you rely on.
-
----
-
-## 8. Quick Command Summary
-
-```bash
-# Activate environment
-source ~/sift_env/bin/activate              # Linux/macOS
-# .\sift_env\Scripts\Activate.ps1           # Windows PowerShell
-
-# Train from camera
-python3 sift_db_train.py --mode train_live
-
-# Train from images
-python3 sift_db_train.py --mode train_files
-
-# Detect from a single image
-python3 sift_db_train.py --mode detect --test_img ../res/train/object_000.jpg
-
-# Live detection
-python3 sift_db_train.py --mode detect_live
-```
-
-Feel free to adjust object isolation, frame downscaling, or matching thresholds to trade off between speed and accuracy depending on your hardware and use case.
-```
