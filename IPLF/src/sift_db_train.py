@@ -2,7 +2,7 @@
 """
 SIFT Database Training and Matching - Modified Version
 Original: sift-detect.py from OpenGenus/SIFT-Scale-Invariant-Feature-Transform
-Author: Original developers (kept all comments)
+Author: Original developers
 Modified: Added database training (live capture/upload), file input option
 Date: 2026
 
@@ -12,8 +12,13 @@ Credits:
 - Original Repo: https://github.com/OpenGenus/SIFT-Scale-Invariant-Feature-Transform (GPL-3.0)
 
 Usage:
-1. python3 sift_db_train.py  # Build database from live or files
-2. python3 sift_detect_db.py  # Detect against trained database
+1. python3 sift_db_train.py --mode train_live # feeding the algorithm a data
+2. python3 sift_db_train.py --mode detect_live # detect object and checks the data from .pkl file
+3. python3 sift_db_train.py --mode detect --test_img *dir* # not yet tested
+4. python3 sift_db_train.py --mode train_files *dir* # not yet tested
+
+Requirement
+
 """
 
 import time 
