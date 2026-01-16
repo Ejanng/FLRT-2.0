@@ -1,4 +1,3 @@
-```markdown
 # SIFT Database Training & Live Detection
 
 > **Credits & Licenses**
