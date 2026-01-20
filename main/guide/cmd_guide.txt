@@ -1,0 +1,13 @@
+# start the venv
+source ./venv/bin/activate
+
+# Start and enable service
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+# create db and user
+sudo -u postgres psql
+
+# grant all
+create_postgres_user.txt
+
+

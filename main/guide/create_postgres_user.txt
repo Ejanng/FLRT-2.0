@@ -1,0 +1,6 @@
+CREATE DATABASE lostandfound_db;
+CREATE USER zeus WITH PASSWORD 'password';
+ALTER ROLE zeus SET client_encoding TO 'utf8';
+ALTER ROLE zeus SET default_transaction_isolation TO 'read committed';
+ALTER ROLE zeus SET timezone TO 'UTC';
+GRANT ALL PRIVILEGES ON DATABASE lostandfound_db TO zeus;
