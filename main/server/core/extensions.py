@@ -4,7 +4,7 @@ from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from flask_session import Session
 import redis
-from config import Config
+from core.config import Config
 
 db = SQLAlchemy()
 bcrypt = Bcrypt()

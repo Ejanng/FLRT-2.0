@@ -1,6 +1,6 @@
 import jwt
 from datetime import datetime, timedelta, timezone
-from config import Config
+from core.config import Config
 
 def create_access_token(user_id):
     payload = {

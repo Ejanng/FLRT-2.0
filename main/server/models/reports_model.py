@@ -1,4 +1,4 @@
-from extensions import db
+from core.extensions import db
 
 class Reports(db.Model):
     __tablename__ = 'reports'

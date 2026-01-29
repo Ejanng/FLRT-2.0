@@ -1,4 +1,4 @@
-from extensions import db
+from core.extensions import db
 from datetime import datetime, timezone
 
 class Users(db.Model):
