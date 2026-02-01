@@ -15,6 +15,7 @@ def create_app():
     bcrypt.init_app(app)
     jwt.init_app(app)
     cors.init_app(app)
+    
 
     with app.app_context():
         db.create_all()
@@ -24,6 +25,10 @@ def create_app():
     app.register_blueprint(admin_bp, url_prefix='/admin')
     # app.register_blueprint(claims_bp, url_prefix='/claims')
     # app.register_blueprint(users_bp, url_prefix='/users')
+
+    print("SECRET_KEY:", repr(Config.JWT_SECRET_KEY))
+    print("ALGORITHM:", repr(Config.ALGORITHM))
+
 
     return app
 

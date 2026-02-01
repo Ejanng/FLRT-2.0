@@ -3,6 +3,7 @@ from flask_bcrypt import Bcrypt
 from auth.token import create_access_token
 
 bcrypt = Bcrypt()
+roles = "user"          # user - default, admin, superadmin
 
 def register_user(data):
     if Users.query.filter_by(student_number=data['student_number']).first():
@@ -14,6 +15,7 @@ def register_user(data):
         student_number=data['student_number'],
         email=data.get('email'),
         password_hash=hashed_password,
+        role=roles,
         contact_info=data['contact_info']
     )
     db.session.add(new_user)
@@ -29,5 +31,14 @@ def authenticate_user(student_number, password):
     if not bcrypt.check_password_hash(user.password_hash, password):
         return None, "Invalid student number or password"
     
-    token = create_access_token(user.user_id)
+    token = create_access_token(user.user_id, user.role)
     return user, token
+
+def change_user_status(user_id, new_status):
+    user = Users.query.get(user_id)
+    if not user:
+        return None, "User not found"
+    
+    user.status = new_status
+    db.session.commit()
+    return user, None

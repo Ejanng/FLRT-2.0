@@ -15,7 +15,7 @@ class Reports(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
 
     user = db.relationship("Users", back_populates="report", lazy=True)
-    claimants = db.relationship('Claimants', back_populates='report', lazy=True)
+    claimed = db.relationship('SuccessClaimed', back_populates='report', lazy=True)
 
     def to_json(self):
         return {

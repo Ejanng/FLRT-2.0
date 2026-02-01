@@ -1,8 +1,9 @@
 from functools import wraps
 from flask import request, jsonify
 import jwt
-from token import decode_access_token
+from auth.token import decode_access_token
 from models import Users
+from core.extensions import redis_client
 
 def auth_required(f):
     @wraps(f)
@@ -20,17 +21,27 @@ def auth_required(f):
             }), 401
         token = auth.replace("Bearer ", "")
         
+        if redis_client.sismember("jwt_blacklist", token):
+            return jsonify({
+                "error": "Token has been revoked"
+            }), 401
+
         try:
             payload = decode_access_token(token)
-            user_id = payload.get("user_id")
-            
-            if not user_id: 
+            if not payload: 
                 return jsonify({""
-                    "error": "Invalid token payload"
+                    "error": "Invalid or expired token"
                 }), 401
             
-            current_user = Users.query.get(user_id)
+            user_id = payload.get("sub")
             
+            if not user_id:
+                return jsonify({
+                    "error": "User not found"
+                }), 404
+            
+            current_user = Users.query.get(user_id)
+
             if not current_user:
                 return jsonify({
                     "error": "User not found"
@@ -48,4 +59,32 @@ def auth_required(f):
         
         return f(current_user, *args, **kwargs)
     
+    return decorated
+
+# used for admin-only access routes and verify reports
+def admin_required(f):
+    @wraps(f)
+    def decorated(current_user, *args, **kwargs):
+        if current_user.role != "admin":
+            return jsonify({
+                "error": "Admin privileges required"
+            }), 403
+        
+        return f(current_user, *args, **kwargs)
+    
+    return decorated
+
+
+# route for superadmin-only access to manage admins
+# superadmin role is only for managing admins
+def superadmin_required(f):
+    @wraps(f)
+    def decorated(current_user, *args, **kwargs):
+        if current_user.role != "superadmin":
+            return jsonify({
+                "error": "Superadmin privileges required"
+            }), 403
+        
+        return f(current_user, *args, **kwargs)
+        
     return decorated
