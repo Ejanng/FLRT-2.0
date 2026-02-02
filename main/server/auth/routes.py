@@ -1,8 +1,7 @@
 from flask import Blueprint, request, jsonify
-from auth.services import register_user, authenticate_user, change_user_status
+from auth.services import register_user, authenticate_user, change_user_status, log_user_activity
 from auth.decorators import auth_required
 from core.extensions import redis_client
-
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -25,6 +24,7 @@ def login():
         return jsonify({"error": token}), 401
     
     change_user_status(user.user_id, "active")
+    log_user_activity(user.user_id, "login", "User logged in successfully")
     
     return jsonify({
         "token": token,
@@ -41,12 +41,15 @@ def login():
 def logout(current_user):
     user, error = change_user_status(current_user.user_id, "deactivated")
     if error:
-        return jsonify({"error": error}), 400
+        return jsonify({
+            "error": error
+        }), 400
 
-    print(f"User {current_user.user_id} logged out.")
+    log_user_activity(current_user.user_id, "logout", "User logged out successfully")
 
     token = request.headers.get("Authorization").replace("Bearer ", "")
-
     redis_client.sadd("jwt_blacklist", token)
     
-    return jsonify({"message": "User logged out successfully"}), 200
+    return jsonify({
+        "message": "User logged out successfully"
+    }), 200

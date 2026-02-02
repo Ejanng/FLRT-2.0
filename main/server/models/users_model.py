@@ -13,8 +13,10 @@ class Users(db.Model):
     contact_info = db.Column(db.String(100), nullable=False)                # to contact the user required talaga
     registered_on = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)  
 
-    report = db.relationship("Reports", back_populates="user", lazy=True)
-    claimed = db.relationship("SuccessClaimed", back_populates="user", lazy=True)
+    lost_report = db.relationship("LostReports", back_populates="user", lazy="select")
+    found_report = db.relationship("FoundReports", back_populates="user", lazy="select")
+    claimed = db.relationship("SuccessClaimed", back_populates="user", lazy="select")
+    logs = db.relationship("UserLog", back_populates="user", lazy="select")
 
     print("Users model loaded")
     def to_json(self):

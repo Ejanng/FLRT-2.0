@@ -1,9 +1,11 @@
 from models.users_model import Users, db
+from models.user_logs_model import UserLog
+from datetime import datetime, timezone
 from flask_bcrypt import Bcrypt
 from auth.token import create_access_token
 
 bcrypt = Bcrypt()
-roles = "user"          # user - default, admin, superadmin
+roles = "admin"          # user - default, admin, superadmin
 
 def register_user(data):
     if Users.query.filter_by(student_number=data['student_number']).first():
@@ -42,3 +44,13 @@ def change_user_status(user_id, new_status):
     user.status = new_status
     db.session.commit()
     return user, None
+
+def log_user_activity(user_id, action, details):
+    log_entry = UserLog(
+        user_id=user_id,
+        action=action,
+        details=details
+    )
+    db.session.add(log_entry)
+    db.session.commit()
+    return log_entry
