@@ -17,6 +17,7 @@ class FoundReports (db.Model):
 
     user = db.relationship("Users", back_populates="found_report", lazy="select")
     claimed = db.relationship('SuccessClaimed', back_populates="found_report", lazy="select")
+    submit_claims = db.relationship("SubmitClaims", back_populates="found_report", lazy="select")
 
     print("FoundReports model loaded")
     def to_json(self):

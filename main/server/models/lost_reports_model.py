@@ -10,7 +10,7 @@ class LostReports(db.Model):
     lost_by = db.Column(db.Integer, db.ForeignKey('users.user_id'), nullable=False)
     lost_description = db.Column(db.String(255), nullable=False)
     lost_date_reported = db.Column(db.DateTime, nullable=False)                  # change in the future to include date reported
-    lost_last_location_seen = db.Column(db.String(100), default=datetime.now(timezone.utc), nullable=False)          # implement the latitude and longtitude in the future
+    lost_last_location_seen = db.Column(db.String(100), nullable=False)          # implement the latitude and longtitude in the future
     lost_status = db.Column(db.String(50), nullable=False, default='reported')   # reported, verifying, returned
     lost_image_url = db.Column(db.String(255), nullable=True)
 
