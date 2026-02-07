@@ -1,0 +1,351 @@
+.reports-page {
+  min-height: 100vh;
+  background: radial-gradient(circle at center, #f0f6ff, #dbeafe);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: Arial, sans-serif;
+  position: relative;
+}
+
+.hero-icon {
+  width: 80px;
+  height: 80px;
+  background-color: #5b8db8;
+  color: white;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  margin-bottom: 20px;
+}
+
+.title {
+  font-size: 48px;
+  margin: 0;
+}
+
+.subtitle {
+  max-width: 600px;
+  color: #4b6b88;
+  margin: 12px 0 30px;
+}
+
+.actions {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 50px;
+}
+
+.btn {
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+}
+
+.btn.primary {
+  background-color: #5b8db8;
+  color: white;
+}
+
+.btn.secondary {
+  background-color: white;
+  color: #5b8db8;
+  border: 2px solid #5b8db8;
+}
+
+.title {
+  font-size: 2rem;
+  margin: 0;
+  margin-bottom: 1.25rem;
+  font-weight: 700;
+}
+
+.subtitle {
+  max-width: 600px;
+  color: #4b6b88;
+  margin: 12px 0 30px;
+}
+
+.actions {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 50px;
+}
+
+.btn {
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.btn.primary {
+  background-color: #5b8db8;
+  color: white;
+}
+
+.btn.primary:hover {
+  background-color: #4a7599;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(91, 141, 184, 0.3);
+}
+
+.btn.secondary {
+  background-color: white;
+  color: #5b8db8;
+  border: 2px solid #5b8db8;
+}
+
+.btn.secondary:hover {
+  background-color: #f0f6ff;
+}
+
+
+/* ====== Report Form Specific Styles ====== */
+.report-container {
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.report-form {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  text-align: left;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #2d3748;
+  margin-bottom: 0.35rem;
+  text-align: left;
+}
+
+.required {
+  color: #e53e3e;
+  margin-left: 2px;
+}
+
+.form-group input[type="text"],
+.form-group input[type="date"],
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  color: #2d3748;
+  background-color: #ffffff;
+  box-sizing: border-box;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="date"]:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #5b8db8;
+  box-shadow: 0 0 0 3px rgba(91, 141, 184, 0.1);
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: #a0aec0;
+}
+
+.form-group select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23718096' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.4;
+}
+
+.character-count {
+  font-size: 0.875rem;
+  color: #718096;
+  margin-top: 0.5rem;
+  text-align: right;
+}
+
+.field-helper {
+  font-size: 0.875rem;
+  color: #718096;
+  margin-top: 0.5rem;
+  font-style: italic;
+}
+
+/* Photo Upload Area */
+.photo-upload-area {
+  position: relative;
+  border: 2px dashed #cbd5e0;
+  border-radius: 8px;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  background-color: #f7fafc;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.photo-upload-area:hover {
+  border-color: #5b8db8;
+  background-color: #edf2f7;
+}
+
+.upload-icon {
+  color: #5b8db8;
+  margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: center;
+}
+
+.upload-text {
+  font-size: 0.875rem;
+  color: #4a5568;
+  margin-bottom: 0.25rem;
+}
+
+.upload-link {
+  color: #5b8db8;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.upload-formats {
+  font-size: 0.8rem;
+  color: #718096;
+}
+
+.photo-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Photo Preview */
+.photo-preview {
+  position: relative;
+  display: inline-block;
+}
+
+.photo-preview img {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.remove-photo {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.remove-photo:hover {
+  background-color: rgba(0, 0, 0, 0.9);
+}
+
+/* Form Actions */
+.form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 1.25rem;
+}
+
+.form-actions .btn {
+  flex: 1;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .reports-page {
+    padding: 1rem 0.5rem;
+  }
+
+  .title {
+    font-size: 2rem;
+  }
+
+  .report-form {
+    padding: 1.5rem;
+  }
+
+  .form-actions {
+    flex-direction: column;
+  }
+
+  .photo-upload-area {
+    padding: 2rem 1rem;
+  }
+
+  .tips-section {
+    padding: 1rem 1.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .title {
+    font-size: 1.5rem;
+  }
+
+  .report-form {
+    padding: 1rem;
+  }
+
+  .form-group label {
+    font-size: 0.9rem;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    font-size: 0.9rem;
+    padding: 0.75rem;
+  }
+
+  .form-actions .btn {
+    padding: 0.875rem 1.25rem;
+    font-size: 0.95rem;
+  }
+}
