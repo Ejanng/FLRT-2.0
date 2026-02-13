@@ -25,7 +25,7 @@ class FoundReports (db.Model):
             'found_object_id': self.found_object_id,
             'found_object_name': self.found_object_name,
             'found_category': self.found_category,
-            'found_by': self.found_by,
+            'found_by': self.found_by,                          # optional
             'found_description': self.found_description,
             'found_date_reported': self.found_date_reported.isoformat(),
             'found_last_location_seen': self.found_last_location_seen,

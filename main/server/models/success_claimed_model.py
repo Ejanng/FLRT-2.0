@@ -1,3 +1,5 @@
+# to be removed
+
 from core.extensions import db
 from datetime import datetime, timezone
 

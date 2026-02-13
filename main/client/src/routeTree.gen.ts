@@ -12,6 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ReportRouteImport } from './routes/report'
 import { Route as ClaimRouteImport } from './routes/claim'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ReportFormRoutesRouteImport } from './routes/report-form/routes'
+import { Route as HomeRoutesRouteImport } from './routes/home/routes'
+import { Route as HeaderRoutesRouteImport } from './routes/header/routes'
+import { Route as FooterRoutesRouteImport } from './routes/footer/routes'
+import { Route as AllReportsRoutesRouteImport } from './routes/all-reports/routes'
 
 const ReportRoute = ReportRouteImport.update({
   id: '/report',
@@ -28,35 +33,105 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReportFormRoutesRoute = ReportFormRoutesRouteImport.update({
+  id: '/report-form/routes',
+  path: '/report-form/routes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HomeRoutesRoute = HomeRoutesRouteImport.update({
+  id: '/home/routes',
+  path: '/home/routes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HeaderRoutesRoute = HeaderRoutesRouteImport.update({
+  id: '/header/routes',
+  path: '/header/routes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FooterRoutesRoute = FooterRoutesRouteImport.update({
+  id: '/footer/routes',
+  path: '/footer/routes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AllReportsRoutesRoute = AllReportsRoutesRouteImport.update({
+  id: '/all-reports/routes',
+  path: '/all-reports/routes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/claim': typeof ClaimRoute
   '/report': typeof ReportRoute
+  '/all-reports/routes': typeof AllReportsRoutesRoute
+  '/footer/routes': typeof FooterRoutesRoute
+  '/header/routes': typeof HeaderRoutesRoute
+  '/home/routes': typeof HomeRoutesRoute
+  '/report-form/routes': typeof ReportFormRoutesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/claim': typeof ClaimRoute
   '/report': typeof ReportRoute
+  '/all-reports/routes': typeof AllReportsRoutesRoute
+  '/footer/routes': typeof FooterRoutesRoute
+  '/header/routes': typeof HeaderRoutesRoute
+  '/home/routes': typeof HomeRoutesRoute
+  '/report-form/routes': typeof ReportFormRoutesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/claim': typeof ClaimRoute
   '/report': typeof ReportRoute
+  '/all-reports/routes': typeof AllReportsRoutesRoute
+  '/footer/routes': typeof FooterRoutesRoute
+  '/header/routes': typeof HeaderRoutesRoute
+  '/home/routes': typeof HomeRoutesRoute
+  '/report-form/routes': typeof ReportFormRoutesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/claim' | '/report'
+  fullPaths:
+    | '/'
+    | '/claim'
+    | '/report'
+    | '/all-reports/routes'
+    | '/footer/routes'
+    | '/header/routes'
+    | '/home/routes'
+    | '/report-form/routes'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/claim' | '/report'
-  id: '__root__' | '/' | '/claim' | '/report'
+  to:
+    | '/'
+    | '/claim'
+    | '/report'
+    | '/all-reports/routes'
+    | '/footer/routes'
+    | '/header/routes'
+    | '/home/routes'
+    | '/report-form/routes'
+  id:
+    | '__root__'
+    | '/'
+    | '/claim'
+    | '/report'
+    | '/all-reports/routes'
+    | '/footer/routes'
+    | '/header/routes'
+    | '/home/routes'
+    | '/report-form/routes'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ClaimRoute: typeof ClaimRoute
   ReportRoute: typeof ReportRoute
+  AllReportsRoutesRoute: typeof AllReportsRoutesRoute
+  FooterRoutesRoute: typeof FooterRoutesRoute
+  HeaderRoutesRoute: typeof HeaderRoutesRoute
+  HomeRoutesRoute: typeof HomeRoutesRoute
+  ReportFormRoutesRoute: typeof ReportFormRoutesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +157,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/report-form/routes': {
+      id: '/report-form/routes'
+      path: '/report-form/routes'
+      fullPath: '/report-form/routes'
+      preLoaderRoute: typeof ReportFormRoutesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/home/routes': {
+      id: '/home/routes'
+      path: '/home/routes'
+      fullPath: '/home/routes'
+      preLoaderRoute: typeof HomeRoutesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/header/routes': {
+      id: '/header/routes'
+      path: '/header/routes'
+      fullPath: '/header/routes'
+      preLoaderRoute: typeof HeaderRoutesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/footer/routes': {
+      id: '/footer/routes'
+      path: '/footer/routes'
+      fullPath: '/footer/routes'
+      preLoaderRoute: typeof FooterRoutesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/all-reports/routes': {
+      id: '/all-reports/routes'
+      path: '/all-reports/routes'
+      fullPath: '/all-reports/routes'
+      preLoaderRoute: typeof AllReportsRoutesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +199,11 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ClaimRoute: ClaimRoute,
   ReportRoute: ReportRoute,
+  AllReportsRoutesRoute: AllReportsRoutesRoute,
+  FooterRoutesRoute: FooterRoutesRoute,
+  HeaderRoutesRoute: HeaderRoutesRoute,
+  HomeRoutesRoute: HomeRoutesRoute,
+  ReportFormRoutesRoute: ReportFormRoutesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

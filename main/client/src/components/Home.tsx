@@ -2,7 +2,7 @@
     import "../styles.css";
     import { useNavigate } from "@tanstack/react-router";
 
-    const Reports: React.FC = () => {
+    const Home: React.FC = () => {
     const navigate = useNavigate();
 
     return (
@@ -28,4 +28,4 @@
     );
     };
 
-    export default Reports;
+    export default Home;
