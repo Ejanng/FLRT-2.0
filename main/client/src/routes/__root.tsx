@@ -1,20 +1,23 @@
 import { Outlet, createRootRoute } from '@tanstack/react-router'
+import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
+import { TanStackDevtools } from '@tanstack/react-devtools'
+
 
 export const Route = createRootRoute({
-  component: rootRoute,
-  notFoundComponent: notFound,
-})
-
-function rootRoute() {
-  return (
-    <div>
+  component: () => (
+    <>
       <Outlet />
-    </div>
-  )
-}
-
-function notFound() {
-  return <div>404 - Not Found try mo sabali ahh route
-
-  </div>
-}
+      <TanStackDevtools
+        config={{
+          position: 'bottom-right',
+        }}
+        plugins={[
+          {
+            name: 'Tanstack Router',
+            render: <TanStackRouterDevtoolsPanel />,
+          },
+        ]}
+      />
+    </>
+  ),
+})
