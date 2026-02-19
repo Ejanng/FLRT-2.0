@@ -71,6 +71,18 @@ function RouteComponent() {
         </div>
 
         <div className="claim-form-group">
+          <label htmlFor="claimantEmail">Email *</label>
+          <input
+            type="email"
+            id="claimantEmail"
+            name="claimantEmail"
+            required
+            placeholder="Enter your  email"
+          />
+        </div>
+        
+
+        <div className="claim-form-group">
           <label htmlFor="description">Description / Proof of Ownership *</label>
           <textarea
             id="description"
