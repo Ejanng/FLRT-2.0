@@ -22,7 +22,7 @@ export default function Admin() {
     e.preventDefault();
 
     try {
-      const res = await fetch("http://localhost:5000/admin/login", {
+      const res = await fetch("http://localhost:5000/admin-login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

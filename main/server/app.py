@@ -2,10 +2,6 @@ from flask import Flask
 from core.config import Config
 from core.extensions import db, bcrypt, jwt, cors
 from auth.routes import  auth_bp
-from admin.routes import admin_bp
-from stats.routes import statistics_bp
-from reports.routes import report_bp
-from claims.routes import claim_bp
 from models import *
 # from routes.claims_route import claims_bp
 # from routes.reports_route import users_bp
@@ -25,10 +21,6 @@ def create_app():
 
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/auth')
-    app.register_blueprint(admin_bp, url_prefix='/admin')
-    app.register_blueprint(statistics_bp, url_prefix='/statistics')
-    app.register_blueprint(report_bp, url_prefix='/reports')
-    app.register_blueprint(claim_bp, url_prefix='/claims')
     # app.register_blueprint(users_bp, url_prefix='/users')
 
     print("SECRET_KEY:", repr(Config.JWT_SECRET_KEY))

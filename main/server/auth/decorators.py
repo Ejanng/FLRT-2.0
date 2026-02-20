@@ -2,7 +2,7 @@ from functools import wraps
 from flask import request, jsonify
 import jwt
 from auth.token import decode_access_token
-from models import Users
+from models import Admins
 from core.extensions import redis_client
 
 def auth_required(f):
@@ -33,14 +33,14 @@ def auth_required(f):
                     "error": "Invalid or expired token"
                 }), 401
             
-            user_id = payload.get("sub")
+            admin_id = payload.get("sub")
             
-            if not user_id:
+            if not admin_id:
                 return jsonify({
                     "error": "User not found"
                 }), 404
             
-            current_user = Users.query.get(user_id)
+            current_user = Admins.query.get(admin_id)
 
             if not current_user:
                 return jsonify({

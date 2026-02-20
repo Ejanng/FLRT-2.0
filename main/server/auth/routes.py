@@ -8,7 +8,7 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route('/admin-register', methods=['POST'])
 def admin_register():
     data = request.get_json()
-    new_admin = register_admin(data['username'], data['password'], data['email'], role='admin')
+    new_admin, error = register_admin(data)
 
     if not new_admin:
         return jsonify({"error": "Admin registration failed"}), 400
@@ -36,7 +36,7 @@ def admin_login():
     # log_user_activity(user.user_id, "login", "User logged in successfully")
     
     return jsonify({
-        "token": token,
+        "access_token": token,
         "admin": {
             "id": admin.user_id,
             "username": admin.username,
