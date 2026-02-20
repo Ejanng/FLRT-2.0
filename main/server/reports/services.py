@@ -37,3 +37,12 @@ def submit_report_lost(current_user, data):
     db.session.commit()
 
     return new_report
+
+def get_all_reports():
+    found_reports = FoundReports.query.all()
+    lost_reports = LostReports.query.all()
+
+    return {
+        "found_reports": [report.to_json() for report in found_reports],
+        "lost_reports": [report.to_json() for report in lost_reports]
+    }

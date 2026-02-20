@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from auth.decorators import auth_required
 from auth.services import log_user_activity
-from reports.services import submit_report_found, submit_report_lost
+from reports.services import submit_report_found, submit_report_lost, get_all_reports
 
 report_bp = Blueprint('reports', __name__)
 
@@ -30,3 +30,8 @@ def report_lost_item(current_user):
         "message": "Lost item reported successfully",
         "report": new_report.to_json()  
     }), 201
+
+@report_bp.route('/status', methods=['GET'])
+def report_status():
+    data = get_all_reports()
+    return jsonify(data), 200
