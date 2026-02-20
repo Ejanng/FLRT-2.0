@@ -56,15 +56,15 @@ def register_admin(data):
     return new_admin, None
 
 
-def authenticate_admin(username, password):
-    admin = Admins.query.filter_by(username=username).first()
+def authenticate_admin(email, password):
+    admin = Admins.query.filter_by(email=email).first()
     if not admin:
         return None, "Invalid username or password"
     
-    if not bcrypt.check_password_hash(admin.password_hash, password):
+    if not bcrypt.check_password_hash(admin.password, password): 
         return None, "Invalid username or password"
     
-    token = create_access_token(admin.user_id, admin.role)
+    token = create_access_token(admin.admin_id, admin.role)
     return admin, token
 
 

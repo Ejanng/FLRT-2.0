@@ -27,7 +27,7 @@ def admin_register():
 @auth_bp.route('/admin-login', methods=['POST'])
 def admin_login():
     data = request.get_json()
-    admin, token = authenticate_admin(data['username'], data['password'])
+    admin, token = authenticate_admin(data['email'], data['password'])
 
     if not admin:
         return jsonify({"error": token}), 401
@@ -38,7 +38,7 @@ def admin_login():
     return jsonify({
         "access_token": token,
         "admin": {
-            "id": admin.user_id,
+            "id": admin.admin_id,
             "username": admin.username,
             "role": admin.role,
             "email": admin.email
