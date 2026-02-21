@@ -1,9 +1,4 @@
-from models.success_claimed_model import SuccessClaimed, db
-from models.users_model import Users
-from models.found_reports_model import FoundReports
-from models.lost_reports_model import LostReports
-from models.submit_claims_model import SubmitClaims
-from models.verified_claims_model import VerifiedClaims
+from models.claims_model import Claims
 
 def submit_claim_item(current_user, data):
     user_id = current_user.user_id
@@ -66,9 +61,9 @@ def change_submit_claim_status(claim_id, new_status):
 
     return claim
 
-def is_user_already_submit_claim(user_id, found_object_id):
-    existing_claim = SubmitClaims.query.filter_by(
-        claim_by=user_id,
-        found_object_id=found_object_id
+def is_user_already_submit_claim(username, report_id):
+    existing_claim = Claims.query.filter_by(
+        username=username,
+        report_id=report_id
     ).first()
     return existing_claim is not None

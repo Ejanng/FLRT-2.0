@@ -1,6 +1,5 @@
 from flask import Blueprint, request, jsonify
-from claims.services import submit_claim_item, verify_claim_service, change_submit_claim_status, is_user_already_submit_claim
-from auth.decorators import auth_required, admin_required
+from claims.services import submit_claim_item, is_user_already_submit_claim
 
 claim_bp = Blueprint('claims', __name__)
 
@@ -8,10 +7,11 @@ claim_bp = Blueprint('claims', __name__)
 def claim_item(current_user):
     data = request.get_json()
 
-    if is_user_already_submit_claim(current_user.user_id, data['report_id']):
+    if is_user_already_submit_claim(data['username'], data['report_id']):
         return jsonify({
             "message": "You have already submitted a claim for this item."
         }), 409
+
 
     new_claim = submit_claim_item(current_user, data)
 
