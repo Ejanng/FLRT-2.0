@@ -1,25 +1,26 @@
-from models.claims_model import Claims
+from models.pending_claims_model import db, PendingClaims
+from models.reports_model import Reports
+from models.admins_model import Admins
+from models.returns_model import Returns
 
-def submit_claim_item(current_user, data):
-    user_id = current_user.user_id
-    users = Users.query.filter_by(user_id=user_id).first()
+def submit_claim_item(data):
+    student_number = data['student_number']
 
-    found_report = FoundReports.query.filter(
-        FoundReports.found_object_id == data['found_object_id'],
-        FoundReports.found_status == 'reported'
+    report = Reports.query.filter(
+        Reports.report_id == data['report_id'],
+        Reports.status == 'found'
     ).first()
 
-    if not found_report:
+    if not report:
         return None
     
-    new_claim = SubmitClaims(
-        found_object_id=found_report.found_object_id,
-        claim_object_name=data['claim_object_name'],
-        claim_category=data['claim_category'],
-        claim_by=users.user_id,
-        claim_description=data['claim_description'],
-        claim_last_location_seen=data['claim_last_location_seen'],
-        claim_image_url=data.get('claim_image_url')
+    new_claim = PendingClaims(
+        report_id=report.report_id,
+        student_name=data['student_name'],
+        student_number=student_number,
+        contact_info=data['contact_info'],
+        description=data['description'],
+        image=data.get('image')
     )
 
     db.session.add(new_claim)
@@ -27,43 +28,45 @@ def submit_claim_item(current_user, data):
 
     return new_claim
 
-def verify_claim_service(current_user, object_id, data):
-    claim = SubmitClaims.query.filter_by(submit_claim_id=object_id).first()
+def verify_claim_service(current_user, claim_id, status):
+    claim = PendingClaims.query.filter_by(claim_id=claim_id).first()
 
     if not claim:
         return None, "Claim not found"
 
-    if claim.claim_status != 'verifying':
-        return claim.claim_status, "Item already verified"
+    if claim.status == 'verified':
+        return claim.status, "Item already verified"
+    
+    if claim.status == 'rejected':
+        return claim.status, "Claim has been rejected"
 
 
     admin_id = current_user.user_id
-    admin = Users.query.filter_by(user_id=admin_id).first()
+    admin = Admins.query.filter_by(user_id=admin_id).first()
 
-    new_verified_claim = VerifiedClaims(
-        submit_claim_id=claim.submit_claim_id,
-        verified_by=admin.user_id,
-        verification_status=data['verification_status'],
-        remarks=data['remarks']
+    new_returns = Returns(
+        admin_id=admin.user_id,
+        report_id=claim.report_id,
+        student_name=claim.student_name,
+        student_number=claim.student_number,
+        contact_info=claim.contact_info,
+        description=claim.description,
+        image=claim.image
     )
-    db.session.add(new_verified_claim)
+    db.session.add(new_returns)
     db.session.commit()
 
-    return new_verified_claim, None
-
-def change_submit_claim_status(claim_id, new_status):
-    claim = SubmitClaims.query.filter_by(submit_claim_id=claim_id).first()
-    if not claim:
-        return None
-
-    claim.claim_status = new_status
+    # Update the claim status to 'verified'
+    claim.status = status
     db.session.commit()
 
-    return claim
+    return new_returns, None
 
-def is_user_already_submit_claim(username, report_id):
-    existing_claim = Claims.query.filter_by(
-        username=username,
+
+# this function is to check if the user has already submitted a claim for the same item, it will return true if the user has already submitted a claim for the same item, otherwise it will return false
+def is_user_already_submit_claim(student_number, report_id):
+    existing_claim = PendingClaims.query.filter_by(
+        student_number=student_number,
         report_id=report_id
     ).first()
     return existing_claim is not None

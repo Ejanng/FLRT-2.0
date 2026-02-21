@@ -12,6 +12,8 @@ class Admins(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)  # date when the admin account was created
     date_updated = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc), nullable=False)  # date when the admin account was last updated
 
+    returns = db.relationship("Returns", back_populates="admin", lazy="select")
+
     print("Admins model loaded")
 
     def to_json(self):

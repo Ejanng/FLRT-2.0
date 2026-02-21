@@ -7,12 +7,15 @@ class Reports(db.Model):
     report_id = db.Column(db.Integer, primary_key=True)
     item_name = db.Column(db.String(100), nullable=False)       # item name
     description = db.Column(db.Text, nullable=True)             # item description
-    status = db.Column(db.String(20), nullable=False)           # lost or found
+    status = db.Column(db.String(20), nullable=False)           # lost, found, returned
     location = db.Column(db.String(100), nullable=False)        # last seen location
     date_reported = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)
     time = db.Column(db.Time, nullable=True)                    # item to be added in the future
     image = db.Column(db.String(255), nullable=True)            # image of the item
     date_reported = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)  # date when the report was made
+
+    pending_claim = db.relationship("PendingClaims", back_populates="report", lazy="select")
+    returns = db.relationship("Returns", back_populates="report", lazy="select")
 
     print("Reports model loaded")
     
