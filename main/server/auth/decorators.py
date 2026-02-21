@@ -9,11 +9,13 @@ def auth_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         auth = request.headers.get("Authorization")
-
+        
+        # identify if user is authenticated or not 
         if not auth: 
             return jsonify({
                 "error": "Not Authorized"
             }), 401
+
         
         if not auth.startswith("Bearer "): 
             return jsonify({
@@ -37,7 +39,7 @@ def auth_required(f):
             
             if not admin_id:
                 return jsonify({
-                    "error": "User not found"
+                    "error": "Admin not found"
                 }), 404
             
             current_user = Admins.query.get(admin_id)

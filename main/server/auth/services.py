@@ -1,5 +1,4 @@
 from models.admins_model import Admins, db
-from datetime import datetime, timezone
 from flask_bcrypt import Bcrypt
 from auth.token import create_access_token
 
