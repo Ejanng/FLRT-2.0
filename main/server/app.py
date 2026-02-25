@@ -2,7 +2,7 @@ from flask import Flask
 from core.config import Config
 from core.extensions import db, bcrypt, jwt, cors
 from auth.routes import  auth_bp
-from reports.routes import reports_bp
+from reports.routes import report_bp
 from claims.routes import claim_bp
 from models import *
 # from routes.claims_route import claims_bp
@@ -23,7 +23,7 @@ def create_app():
 
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/auth')
-    app.register_blueprint(reports_bp, url_prefix='/reports')
+    app.register_blueprint(report_bp, url_prefix='/reports')
     app.register_blueprint(claim_bp, url_prefix='/claims')
 
     # app.register_blueprint(users_bp, url_prefix='/users')

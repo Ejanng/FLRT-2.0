@@ -1,12 +1,13 @@
 from models.reports_model import Reports, db
 
-def submit_report_found(current_user, data):
-    print("Submitting found report with data:", data)
-    print("Current user data:", current_user.user_id)
-
-    
+def submit_report(data):
     new_report = Reports(
-              
+        item_name=data.get('item_name'),
+        description=data.get('description'),
+        status=data.get('status'),
+        location=data.get('location'),
+        time=data.get('time'),
+        image=data.get('image')
     )
 
     db.session.add(new_report)
@@ -18,5 +19,5 @@ def get_all_reports():
     all_reports = Reports.query.all()
 
     return {
-        "reports": all_reports
+        "reports": [report.to_json() for report in all_reports]
     }
