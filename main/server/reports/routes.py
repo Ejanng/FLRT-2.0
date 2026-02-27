@@ -1,57 +1,12 @@
-import os
-from uuid import uuid4
-from werkzeug.utils import secure_filename
-from flask import Blueprint, request, jsonify, send_from_directory
-from reports.services import (
-    submit_report_found,
-    submit_report_lost,
-    get_all_reports,
-    publish_report_to_claims,
-    get_claimable_reports,
-)
+from flask import Blueprint, request, jsonify
+from reports.services import submit_report, get_all_reports
 
 reports_bp = Blueprint('reports', __name__)
 
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-
-def _extract_request_data():
-    if request.is_json:
-        return request.get_json() or {}
-    return request.form.to_dict() if request.form else {}
-
-
-def _save_photo_file():
-    photo = request.files.get('photo')
-    if not photo or not photo.filename:
-        return None
-
-    original_name = secure_filename(photo.filename)
-    if not original_name:
-        return None
-
-    unique_name = f"{uuid4().hex}_{original_name}"
-    save_path = os.path.join(UPLOAD_DIR, unique_name)
-    photo.save(save_path)
-    return unique_name
-
-
-def _create_report_from_payload(data):
-    status = (data.get('status') or '').strip().lower()
-    image_name = _save_photo_file()
-
-    if status == 'lost':
-        return submit_report_lost(data, image_name=image_name)
-    return submit_report_found(data, image_name=image_name)
-
-@reports_bp.route('/report-found', methods=['POST'])
-def report_found_item():
-    data = _extract_request_data()
-    new_report, error = submit_report_found(data, image_name=_save_photo_file())
-
-    if error:
-        return jsonify({"error": error}), 400
+@report_bp.route('/report-item', methods=['POST'])
+def report_item():
+    data = request.get_json()
+    new_report = submit_report(data)
 
     # log_user_activity(current_user.user_id, "report_found", f"Reported found item: {new_report.found_object_name}")
 
