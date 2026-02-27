@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from reports.services import submit_report, get_all_reports
+from reports.services import submit_report, get_all_reports, publish_report_to_claims, get_claimable_reports
 
 report_bp = Blueprint('reports', __name__)
 
@@ -26,37 +26,37 @@ def report_status():
         }), 404
     return jsonify(data), 200
 
-# FIX this function from services
+@report_bp.route('/publish-report', methods=['POST'])
+def publish_report():
+    payload = request.get_json() or {}
+    report_id = payload.get('report_id')
 
-# @report_bp.route('/publish-report', methods=['POST'])
-# def publish_report():
-#     payload = request.get_json() or {}
-#     report_id = payload.get('report_id')
+    if not report_id:
+        return jsonify({"error": "report_id is required"}), 400
 
-#     if not report_id:
-#         return jsonify({"error": "report_id is required"}), 400
+    try:
+        report_id = int(report_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "report_id must be a valid number"}), 400
 
-#     try:
-#         report_id = int(report_id)
-#     except (TypeError, ValueError):
-#         return jsonify({"error": "report_id must be a valid number"}), 400
+    published_report, error = publish_report_to_claims(report_id)
 
-#     published_report, error = publish_report_to_claims(report_id)
+    if error:
+        return jsonify({"error": error}), 400
 
-#     if error:
-#         return jsonify({"error": error}), 400
-
-#     return jsonify({
-#         "message": "Report published to claims successfully",
-#         "report": published_report.to_json()
-#     }), 200
+    return jsonify({
+        "message": "Report published to claims successfully",
+        "report": published_report.to_json()
+    }), 200
 
 
-# @report_bp.route('/claimable-reports', methods=['GET'])
-# def claimable_reports():
-#     data = get_claimable_reports()
-#     return jsonify(data), 200
+@report_bp.route('/claimable-reports', methods=['GET'])
+def claimable_reports():
+    data = get_claimable_reports()
+    return jsonify(data), 200
 
+
+# Unknown FUNCTION FIX LATER
 
 # @report_bp.route('/uploads/<path:filename>', methods=['GET'])
 # def get_uploaded_report_image(filename):
