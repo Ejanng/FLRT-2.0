@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -8,6 +8,24 @@ import {
 import { Search, MapPin, Calendar, Tag } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
 import '../styles.css';
+
+const CLAIM_PUBLISH_TRIGGER_KEY = 'claimableReportsRefreshToken';
+const API_BASE_URL = 'http://localhost:5000';
+
+const normalizeStatus = (status: unknown): 'lost' | 'found' => {
+  const value = String(status || '').trim().toLowerCase();
+  if (value === 'published_lost') return 'lost';
+  if (value === 'published_found') return 'found';
+  return value === 'lost' ? 'lost' : 'found';
+};
+
+const resolveImageUrl = (imageValue: string | null | undefined): string => {
+  if (!imageValue) return 'https://via.placeholder.com/300x200?text=Image';
+  if (imageValue.startsWith('http://') || imageValue.startsWith('https://')) {
+    return imageValue;
+  }
+  return `${API_BASE_URL}/reports/images/${encodeURIComponent(imageValue)}`;
+};
 
 interface LostItem {
   id: string;
@@ -20,51 +38,6 @@ interface LostItem {
   image: string;
 }
 
-// Sample data
-const defaultData: LostItem[] = [
-  {
-    id: '1',
-    name: 'Silver Leather Wallet',
-    description: 'Black leather wallet with silver clasp',
-    location: 'Library Entrance',
-    date: '2026-02-10',
-    category: 'Accessories',
-    status: 'lost',
-    image: 'https://via.placeholder.com/300x200?text=Wallet'
-  },
-  {
-    id: '2',
-    name: 'Blue Adidas Water Bottle',
-    description: 'Insulated stainless steel bottle',
-    location: 'Cafeteria',
-    date: '2026-02-12',
-    category: 'Bottles',
-    status: 'found',
-    image: 'https://via.placeholder.com/300x200?text=Water+Bottle'
-  },
-  {
-    id: '3',
-    name: 'MacBook Pro Charger',
-    description: 'USB-C charging cable 2m white',
-    location: 'Computer Lab 204',
-    date: '2026-02-11',
-    category: 'Electronics',
-    status: 'lost',
-    image: 'https://via.placeholder.com/300x200?text=Charger'
-  },
-  {
-    id: '4',
-    name: 'Red Backpack',
-    description: 'North Face Borealis 28L',
-    location: 'Gym Locker Room',
-    date: '2026-02-13',
-    category: 'Bags',
-    status: 'found',
-    image: 'https://via.placeholder.com/300x200?text=Backpack'
-  }
-];
-
-// Columns for TanStack Table
 const columns = [
   { accessorKey: 'name' as const, header: 'Name' },
   { accessorKey: 'description' as const, header: 'Description' },
@@ -75,13 +48,50 @@ const columns = [
 ];
 
 export const Claimant: React.FC = () => {
-  const [data] = useState<LostItem[]>(defaultData);
+  const [data, setData] = useState<LostItem[]>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
   const [typeFilter, setTypeFilter] = useState('All Types');
+  const [loadMessage, setLoadMessage] = useState('Loading reports...');
   const navigate = useNavigate();
 
-  // Client-side filtering
+  const fetchPublishedReports = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/reports/claimable-reports');
+      if (response.ok) {
+        const result = await response.json();
+        const fetchedReports: LostItem[] = (result.reports || []).map((report: any) => ({
+          id: String(report.report_id),
+          name: report.item_name || '',
+          description: report.description || '',
+          location: report.location || '',
+          date: report.date_reported ? new Date(report.date_reported).toLocaleDateString() : '',
+          category: report.category || 'Published',
+          status: normalizeStatus(report.status),
+          image: resolveImageUrl(report.image),
+        }));
+        setData(fetchedReports);
+        setLoadMessage(fetchedReports.length ? '' : 'No published reports available.');
+      } else {
+        console.error('Failed to fetch published reports');
+        setLoadMessage('Failed to load published reports.');
+      }
+    } catch (error) {
+      console.error('Error fetching published reports:', error);
+      setLoadMessage('Error loading published reports.');
+    }
+  };
+
+  useEffect(() => {
+    fetchPublishedReports();
+
+    const trigger = localStorage.getItem(CLAIM_PUBLISH_TRIGGER_KEY);
+    if (trigger) {
+      localStorage.removeItem(CLAIM_PUBLISH_TRIGGER_KEY);
+    }
+  }, []); 
+
+
   const filteredData = useMemo(() => {
     return data.filter(item => {
       const matchesCategory = categoryFilter === 'All Categories' || item.category === categoryFilter;
@@ -122,7 +132,6 @@ export const Claimant: React.FC = () => {
   return (
     <div className="page">
       <div className="container">
-
         {/* Filters */}
         <div className="filters">
           <div className="filters-row">
@@ -165,13 +174,14 @@ export const Claimant: React.FC = () => {
         {/* Items Header */}
         <div className="items-header">
           <span>{filteredData.length} items found</span>
-          <button className="refresh-btn" onClick={() => window.location.reload()}>
+          <button className="refresh-btn" onClick={fetchPublishedReports}>
             Refresh
           </button>
         </div>
 
         {/* Cards */}
         <div className="cards-grid">
+          {loadMessage && <p>{loadMessage}</p>}
           {table.getRowModel().rows.map(row => {
             const item = row.original;
             return (
@@ -231,7 +241,6 @@ export const Claimant: React.FC = () => {
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

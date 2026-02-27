@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import '../../styles.css';
 
 type ClaimFormSearch = {
@@ -36,6 +36,7 @@ function RouteComponent() {
 
   console.log('ClaimForm rendering with:', { id, name, location, date, category });
 
+  const navigate = useNavigate();
   return (
     <div className="claim-page">
       <div className="claim-card">
@@ -108,8 +109,8 @@ function RouteComponent() {
         </div>
 
         <div className="claim-form-actions">
-          <button type="submit" className="claim-submit-btn">Submit Claim</button>
-          <button type="button" className="claim-cancel-btn">Cancel</button>
+          <button type="submit" className="claim-submit-btn" onClick={() => navigate({to: "/"})}>Submit Claim</button>  {/* temporary navigation for testing */}
+          <button type="button" className="claim-cancel-btn" onClick={() => navigate({to: "/claim"})}>Cancel</button>
         </div>
       </div>
     </div>

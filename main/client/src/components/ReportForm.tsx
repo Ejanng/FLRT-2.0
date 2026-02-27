@@ -4,16 +4,22 @@ import "../styles.css";
 
 const ReportForm: React.FC = () => {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
+  const initialFormData = {
     itemName: "",
     description: "",
     status: "",
     location: "",
     date: "",
     photo: null as File | null,
+  };
+  const [formData, setFormData] = useState({
+    ...initialFormData,
   });
 
   const [photoPreview, setPhotoPreview] = useState<string>("");
+  const [submitMessage, setSubmitMessage] = useState<string>("");
+  const [submitStatus, setSubmitStatus] = useState<"success" | "error" | "">("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -51,12 +57,51 @@ const ReportForm: React.FC = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Handle form submission logic here (e.g., TanStack Query mutation)
-    console.log("Form submitted:", formData);
-  };
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsSubmitting(true);
+  setSubmitMessage("");
+  setSubmitStatus("");
 
+  const dataToSend = new FormData();
+  dataToSend.append("itemName", formData.itemName);
+  dataToSend.append("description", formData.description);
+  dataToSend.append("status", formData.status);
+  dataToSend.append("location", formData.location);
+  dataToSend.append("date", formData.date);
+
+  if (formData.photo) {
+    dataToSend.append("photo", formData.photo);
+  }
+
+  try {
+    const response = await fetch("http://localhost:5000/reports/reports", {
+      method: "POST",
+      body: dataToSend,
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log("Form submitted successfully:", data);
+      setSubmitStatus("success");
+      setSubmitMessage("Report submitted successfully!");
+      setFormData(initialFormData);
+      setPhotoPreview("");
+    } else {
+      const errorBody = await response.json().catch(() => null);
+      const errorMessage = errorBody?.error || "Failed to submit report.";
+      console.error("Failed to submit report:", errorMessage);
+      setSubmitStatus("error");
+      setSubmitMessage(`${errorMessage} Please try again.`);
+    }
+  } catch (error) {
+    console.error("Error submitting report:", error);
+    setSubmitStatus("error");
+    setSubmitMessage("An error occurred. Please try again.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
   const characterCount = formData.description.length;
   const maxCharacters = 1000;
   const minCharacters = 10;
@@ -65,6 +110,11 @@ const ReportForm: React.FC = () => {
     <div className="reports-page">
       <div className="report-container">
         <form className="report-form" onSubmit={handleSubmit}>
+          {submitMessage && (
+            <div className={`form-message ${submitStatus === "success" ? "success" : "error"}`}>
+              {submitMessage}
+            </div>
+          )}
           {/* Item Name */}
           <div className="form-group">
             <label htmlFor="itemName">
@@ -208,8 +258,8 @@ const ReportForm: React.FC = () => {
 
           {/* Form Actions */}
           <div className="form-actions">
-            <button type="submit" className="btn primary">
-              Submit Report
+            <button type="submit" className="btn primary" disabled={isSubmitting}>
+              {isSubmitting ? "Submitting..." : "Submit Report"}
             </button>
             <button
               type="button"
