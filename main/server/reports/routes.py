@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from reports.services import submit_report, get_all_reports, publish_report_to_claims, get_claimable_reports
+from server.reports.services import submit_report, get_all_reports, publish_report_to_claims, get_claimable_reports
 
 report_bp = Blueprint('reports', __name__)
 
