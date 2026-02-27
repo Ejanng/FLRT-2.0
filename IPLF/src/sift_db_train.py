@@ -210,11 +210,14 @@ def build_database_live_capture():
     return database
 
 def detect_from_database(test_img_path, database):
-
     """
     Detect/match test image against trained database
     """
     test_gray = cv2.imread(test_img_path, 0)
+    if test_gray is None:
+        print(f"❌ Could not load test image: {test_img_path}")
+        return
+        
     kp_test, desc_test = sift.detectAndCompute(test_gray, None)
     
     if desc_test is None:
@@ -225,7 +228,8 @@ def detect_from_database(test_img_path, database):
     best_good = 0
     best_img_name = None
     
-    for img_name, kp_train, desc_train in database:
+    # FIXED: Only unpack 2 values (img_name, desc_train) - no keypoints stored
+    for img_name, desc_train in database:
         matches = flann.knnMatch(desc_test, desc_train, k=2)
         
         # store all the good matches as per Lowe's ratio test.
@@ -234,44 +238,29 @@ def detect_from_database(test_img_path, database):
             if m.distance < 0.75*n.distance:
                 goodMatch.append(m)
         
-        # If enough matches are found, we extract the locations of matched keypoints 
-        # in both the images. They are passed to find the perpective transformation.
-        if len(goodMatch) > MIN_MATCH_COUNT:
-            tp = []  # src_pts (train)
-            qp = []  # dst_pts (test)
-            for m in goodMatch:
-                tp.append(kp_train[m.trainIdx].pt)
-                qp.append(kp_test[m.queryIdx].pt)
-            tp, qp = np.float32((tp, qp))
-            
-            H, status = cv2.findHomography(tp, qp, cv2.RANSAC, 3.0)
-            
-            if H is not None:
-                h, w = test_gray.shape  # Note: swapped for outline
-                train_outline = np.float32([[[0,0],[0,h-1],[w-1,h-1],[w-1,0]]])
-                query_outline = cv2.perspectiveTransform(train_outline, H)
-                
-                # Display result
-                test_color = cv2.cvtColor(test_gray, cv2.COLOR_GRAY2BGR)
-                cv2.polylines(test_color, [np.int32(query_outline)], True, (0,255,0), 5)
-                cv2.putText(test_color, f'Object Found: {img_name} ({len(goodMatch)} matches)', 
-                           (50,50), cv2.FONT_HERSHEY_COMPLEX, 1, (0,255,0), 2)
-                
-                plt.imshow(cv2.cvtColor(test_color, cv2.COLOR_BGR2RGB))
-                plt.title(f'Match Found: {img_name}')
-                plt.show()
-                
-                best_match = test_color
-                best_good = len(goodMatch)
-                best_img_name = img_name
+        # SIMPLIFIED: Just count matches, skip homography (no keypoints stored)
+        if len(goodMatch) > best_good:
+            best_good = len(goodMatch)
+            best_img_name = img_name
+            best_match = goodMatch
         
         print(f"'{img_name}': {len(goodMatch)} matches (need >{MIN_MATCH_COUNT})")
     
-    if best_img_name:
-        print(f"Best match: {best_img_name} ({best_good} matches)")
+    # Display result if we have enough matches
+    if best_img_name and best_good > MIN_MATCH_COUNT:
+        test_color = cv2.cvtColor(test_gray, cv2.COLOR_GRAY2BGR)
+        cv2.putText(test_color, f'Best Match: {best_img_name} ({best_good} matches)', 
+                   (50,50), cv2.FONT_HERSHEY_COMPLEX, 1, (0,255,0), 2)
+        
+        plt.imshow(cv2.cvtColor(test_color, cv2.COLOR_BGR2RGB))
+        plt.title(f'Match Found: {best_img_name}')
+        plt.show()
+        
+        print(f"✅ Best match: {best_img_name} ({best_good} matches)")
     else:
-        print("No sufficient matches found in database")
+        print("❌ No sufficient matches found in database")
 
+        
 def detect_live_from_database():
     """SIMPLE LIVE DETECTION - Like original SIFT demo"""
     database = load_database()
