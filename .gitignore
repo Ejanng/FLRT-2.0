@@ -24,6 +24,9 @@ __pycache__/
 alembic/versions/*.pyc
 alembic/versions/*.py
 
+# gdrive credentials
+credentials.json
+
 # ===============================
 # Node / Frontend (React)
 # ===============================
