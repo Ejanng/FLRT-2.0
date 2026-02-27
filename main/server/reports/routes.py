@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from reports.services import submit_report, get_all_reports
 
-reports_bp = Blueprint('reports', __name__)
+report_bp = Blueprint('reports', __name__)
 
 @report_bp.route('/report-item', methods=['POST'])
 def report_item():
@@ -16,37 +16,8 @@ def report_item():
     }), 201
 
 
-@reports_bp.route('/report-lost', methods=['POST'])
-def report_lost_item():
-    data = _extract_request_data()
-    new_report, error = submit_report_lost(data, image_name=_save_photo_file())
 
-    if error:
-        return jsonify({"error": error}), 400
-
-    # log_user_activity(current_user.user_id, "report_lost", f"Reported lost item: {new_report.lost_object_name}")
-
-    return jsonify({
-        "message": "Lost item reported successfully",
-        "report": new_report.to_json()  
-    }), 201
-
-
-@reports_bp.route('/reports', methods=['POST'])
-def submit_report():
-    data = _extract_request_data()
-    new_report, error = _create_report_from_payload(data)
-
-    if error:
-        return jsonify({"error": error}), 400
-
-    return jsonify({
-        "message": "Report submitted successfully",
-        "report": new_report.to_json()
-    }), 201
-
-
-@reports_bp.route('/all-reports', methods=['GET'])
+@report_bp.route('/all-reports', methods=['GET'])
 def report_status():
     data = get_all_reports()
     if not data:
@@ -55,37 +26,38 @@ def report_status():
         }), 404
     return jsonify(data), 200
 
+# FIX this function from services
 
-@reports_bp.route('/publish-report', methods=['POST'])
-def publish_report():
-    payload = request.get_json() or {}
-    report_id = payload.get('report_id')
+# @report_bp.route('/publish-report', methods=['POST'])
+# def publish_report():
+#     payload = request.get_json() or {}
+#     report_id = payload.get('report_id')
 
-    if not report_id:
-        return jsonify({"error": "report_id is required"}), 400
+#     if not report_id:
+#         return jsonify({"error": "report_id is required"}), 400
 
-    try:
-        report_id = int(report_id)
-    except (TypeError, ValueError):
-        return jsonify({"error": "report_id must be a valid number"}), 400
+#     try:
+#         report_id = int(report_id)
+#     except (TypeError, ValueError):
+#         return jsonify({"error": "report_id must be a valid number"}), 400
 
-    published_report, error = publish_report_to_claims(report_id)
+#     published_report, error = publish_report_to_claims(report_id)
 
-    if error:
-        return jsonify({"error": error}), 400
+#     if error:
+#         return jsonify({"error": error}), 400
 
-    return jsonify({
-        "message": "Report published to claims successfully",
-        "report": published_report.to_json()
-    }), 200
-
-
-@reports_bp.route('/claimable-reports', methods=['GET'])
-def claimable_reports():
-    data = get_claimable_reports()
-    return jsonify(data), 200
+#     return jsonify({
+#         "message": "Report published to claims successfully",
+#         "report": published_report.to_json()
+#     }), 200
 
 
-@reports_bp.route('/uploads/<path:filename>', methods=['GET'])
-def get_uploaded_report_image(filename):
-    return send_from_directory(UPLOAD_DIR, filename)
+# @report_bp.route('/claimable-reports', methods=['GET'])
+# def claimable_reports():
+#     data = get_claimable_reports()
+#     return jsonify(data), 200
+
+
+# @report_bp.route('/uploads/<path:filename>', methods=['GET'])
+# def get_uploaded_report_image(filename):
+#     return send_from_directory(UPLOAD_DIR, filename)

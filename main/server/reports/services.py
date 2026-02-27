@@ -1,4 +1,4 @@
-from models.reports_model import Reports, db
+from models.reports_model import Reports
 
 def submit_report(data):
     new_report = Reports(
@@ -12,30 +12,6 @@ def submit_report(data):
 
     return new_report, None
 
-
-def submit_report_found(data, image_name=None):
-    print("Submitting found report with data:", data)
-
-    new_report, error = _map_report_payload(data, fallback_status='found', image_name=image_name)
-    if error:
-        return None, error
-
-    db.session.add(new_report)
-    db.session.commit()
-
-    return new_report, None
-
-def submit_report_lost(data, image_name=None):
-    print("Submitting lost report with data:", data)
-
-    new_report, error = _map_report_payload(data, fallback_status='lost', image_name=image_name)
-    if error:
-        return None, error
-
-    db.session.add(new_report)
-    db.session.commit()
-
-    return new_report, None
 
 def get_all_reports():
     all_reports = Reports.query.all()
