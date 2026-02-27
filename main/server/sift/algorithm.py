@@ -5,6 +5,7 @@ import pickle
 import os
 import argparse
 import requests
+import re
 from io import BytesIO
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -28,6 +29,46 @@ flann=cv2.FlannBasedMatcher(flannParam,{})
 DB_FILE = "./res/sift_database.pkl"
 IMAGE_DIR = "./res/train"
 GDRIVE_CREDENTIALS = "./res/credentials.json"  # Service account JSON key
+
+def extract_gdrive_file_id(url):
+    """
+    Extract Google Drive file ID from various URL formats
+    """
+    if not url or not isinstance(url, str):
+        return None
+    
+    # Pattern 1: https://drive.google.com/file/d/FILE_ID/view
+    pattern1 = r'/file/d/([a-zA-Z0-9_-]+)'
+    match = re.search(pattern1, url)
+    if match:
+        return match.group(1)
+    
+    # Pattern 2: https://drive.google.com/open?id=FILE_ID
+    pattern2 = r'[?&]id=([a-zA-Z0-9_-]+)'
+    match = re.search(pattern2, url)
+    if match:
+        return match.group(1)
+    
+    # Pattern 3: https://drive.google.com/uc?id=FILE_ID
+    pattern3 = r'uc\?.*?id=([a-zA-Z0-9_-]+)'
+    match = re.search(pattern3, url)
+    if match:
+        return match.group(1)
+    
+    # If it's just the ID itself (no URL)
+    if re.match(r'^[a-zA-Z0-9_-]{20,}$', url):
+        return url
+    
+    return None
+
+def convert_to_direct_download(url):
+    """
+    Convert any Google Drive sharing URL to direct download URL
+    """
+    file_id = extract_gdrive_file_id(url)
+    if file_id:
+        return f"https://drive.google.com/uc?export=download&id={file_id}"
+    return None
 
 def get_drive_service():
     """Authenticate and return Google Drive service"""
@@ -81,6 +122,94 @@ def download_image_from_drive(service, file_id):
     except Exception as e:
         print(f"⚠️ Failed to download image {file_id}: {e}")
         return None
+
+def load_image_from_source(source):
+    """
+    Load image from local path, URL, or Google Drive sharing link
+    Returns: (image_array, source_type)
+    """
+    if not source:
+        raise ValueError("No source provided")
+    
+    print(f"📂 Loading from: {source[:80]}...")
+    
+    # Check if it's a Google Drive URL
+    gdrive_file_id = extract_gdrive_file_id(source)
+    
+    if gdrive_file_id and 'drive.google.com' in source:
+        print(f"🔍 Detected Google Drive file ID: {gdrive_file_id}")
+        
+        # Method 1: Try direct download URL first (fastest, no API needed)
+        direct_url = f"https://drive.google.com/uc?export=download&id={gdrive_file_id}"
+        print(f"⬇️ Trying direct download...")
+        
+        try:
+            # Use session to handle redirects
+            session = requests.Session()
+            response = session.get(direct_url, timeout=30, allow_redirects=True)
+            
+            # Check if we got a confirmation page (large file warning)
+            if 'confirm' in response.url or 'downloadWarning' in response.text:
+                # Extract confirm token
+                for key, value in response.cookies.items():
+                    if 'download' in key.lower():
+                        confirm_url = f"{direct_url}&confirm={value}"
+                        response = session.get(confirm_url, timeout=30)
+                        break
+            
+            response.raise_for_status()
+            
+            # Check if we got HTML instead of image
+            if 'text/html' in response.headers.get('content-type', ''):
+                raise Exception("Got HTML page instead of image (file may be too large or private)")
+            
+            img_array = np.frombuffer(response.content, np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+            
+            if img is not None:
+                print(f"✅ Successfully loaded via direct download")
+                return img, 'gdrive_direct'
+            else:
+                raise Exception("Could not decode image")
+                
+        except Exception as e:
+            print(f"⚠️ Direct download failed: {e}")
+            
+            # Method 2: Try Google Drive API if credentials exist
+            if os.path.exists(GDRIVE_CREDENTIALS):
+                print(f"🔐 Trying Google Drive API...")
+                try:
+                    service = get_drive_service()
+                    img = download_image_from_drive(service, gdrive_file_id)
+                    if img is not None:
+                        print(f"✅ Successfully loaded via Drive API")
+                        return img, 'gdrive_api'
+                except Exception as api_e:
+                    print(f"⚠️ Drive API failed: {api_e}")
+    
+    # Handle regular HTTP/HTTPS URLs
+    if source.startswith(('http://', 'https://')):
+        print(f"⬇️ Downloading from URL...")
+        try:
+            response = requests.get(source, timeout=30)
+            response.raise_for_status()
+            img_array = np.frombuffer(response.content, np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+            if img is not None:
+                print(f"✅ Successfully loaded from URL")
+                return img, 'url'
+            else:
+                raise Exception("Could not decode image from URL")
+        except Exception as e:
+            raise Exception(f"Failed to download from URL: {e}")
+    
+    # Handle local files
+    print(f"📁 Loading local file...")
+    img = cv2.imread(source, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise FileNotFoundError(f"Could not load local image: {source}")
+    print(f"✅ Successfully loaded local file")
+    return img, 'local'
 
 def load_database():
     """Load existing database - FIXED for empty/corrupted files"""
@@ -220,12 +349,7 @@ def build_database_from_url(image_url):
     database = []
     
     try:
-        print(f"📥 Downloading from URL: {image_url}")
-        response = requests.get(image_url, timeout=30)
-        response.raise_for_status()
-        
-        img_array = np.frombuffer(response.content, np.uint8)
-        img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+        img, source_type = load_image_from_source(image_url)
         
         if img is not None:
             img_name = os.path.basename(image_url.split('?')[0]) or "url_image.jpg"
@@ -237,30 +361,18 @@ def build_database_from_url(image_url):
         else:
             print("❌ Could not decode image from URL")
             
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Download failed: {e}")
-    
-    return database
+    except Exception as e:
+        print(f"❌ Error: {e}")
 
-def detect_from_database(test_img_path, database):
+def detect_from_database(test_img_source, database):
     """
     Detect/match test image against trained database
+    Supports: local path, URL, Google Drive sharing link
     """
-    # Handle URL or local path
-    if test_img_path.startswith(('http://', 'https://')):
-        try:
-            response = requests.get(test_img_path, timeout=30)
-            response.raise_for_status()
-            img_array = np.frombuffer(response.content, np.uint8)
-            test_gray = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-        except Exception as e:
-            print(f"❌ Could not download test image: {e}")
-            return
-    else:
-        test_gray = cv2.imread(test_img_path, cv2.IMREAD_GRAYSCALE)
-    
-    if test_gray is None:
-        print(f"❌ Could not load test image: {test_img_path}")
+    try:
+        test_gray, source_type = load_image_from_source(test_img_source)
+    except Exception as e:
+        print(f"❌ Could not load test image: {e}")
         return
         
     kp_test, desc_test = sift.detectAndCompute(test_gray, None)
