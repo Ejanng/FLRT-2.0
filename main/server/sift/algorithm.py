@@ -22,7 +22,7 @@ flann=cv2.FlannBasedMatcher(flannParam,{})
 
 # Database file
 DB_FILE = "./res/sift_database.pkl"
-IMAGE_DIR = "./res/train"
+IMAGE_DIR = "https://drive.google.com/drive/folders/1L67SDe_Tw0riFXWE_remlt0w0qfW-WGH?usp=sharing"  # Local directory for training images (can be changed to a URL or cloud storage path if needed)
 
 def load_database():
     """Load existing database - FIXED for empty/corrupted files"""
