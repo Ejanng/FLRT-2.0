@@ -1,3 +1,13 @@
+"""
+How to use?
+First before running the server, you need to run first the algorithm.py to authenticate your Google Drive account and create the token.pickle file. This will allow the server to access your Google Drive for training and saving results.
+Run the following command in your terminal:
+python server/sift/algorithm.py --mode train_gdrive --source 'https://drive.google.com/drive/folders/1L67SDe_Tw0riFXWE_remlt0w0qfW-WGH'
+This will authenticate your Google Drive account and create the token.pickle file in the server/sift/res/ directory. You only need to do this once. After that, you can start the server and it will use the saved token to access your Google Drive for training and saving results without needing to authenticate again.
+"""
+
+
+
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,34 +26,48 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 # Threshold 
-MIN_MATCH_COUNT=30
+MIN_MATCH_COUNT = 30
 
-# Initiate SIFT detector - Updated for modern OpenCV (post-3.4.2)
+# Setup paths - works regardless of where script is called from
+MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+RES_DIR = os.path.join(MODULE_DIR, 'res')
+
+# Ensure res directory exists
+os.makedirs(RES_DIR, exist_ok=True)
+os.makedirs(os.path.join(RES_DIR, 'train'), exist_ok=True)
+
+# File paths
+GDRIVE_CREDENTIALS = os.path.join(RES_DIR, "client_secret.json")
+TOKEN_FILE = os.path.join(RES_DIR, "token.pickle")
+DB_FILE = os.path.join(RES_DIR, "sift_database.pkl")
+IMAGE_DIR = os.path.join(RES_DIR, "train")
+
+# Debug output (remove after testing)
+print(f"📁 SIFT module directory: {MODULE_DIR}")
+print(f"📁 Resources directory: {RES_DIR}")
+print(f"📁 Credentials file: {GDRIVE_CREDENTIALS}")
+print(f"   Credentials exist: {os.path.exists(GDRIVE_CREDENTIALS)}")
+print(f"📁 Token file: {TOKEN_FILE}")
+print(f"   Token exists: {os.path.exists(TOKEN_FILE)}")
+
+# Use FULL ACCESS scope for everything (so token is consistent)
+SCOPES = ['https://www.googleapis.com/auth/drive']
+
+# Initiate SIFT detector
 try:
     sift = cv2.SIFT_create()
 except:
-    sift = cv2.xfeatures2d.SIFT_create()  # Legacy fallback
+    sift = cv2.xfeatures2d.SIFT_create()
 
 # Create the Flann Matcher object
-FLANN_INDEX_KDITREE=0
-flannParam=dict(algorithm=FLANN_INDEX_KDITREE,tree=5)
-flann=cv2.FlannBasedMatcher(flannParam,{})
-
-# Database file
-DB_FILE = "./res/sift_database.pkl"
-IMAGE_DIR = "./res/train"
-GDRIVE_CREDENTIALS = "./res/client_secret.json"  # OAuth client secret
-TOKEN_FILE = "./res/token.pickle"
-
-# Use FULL ACCESS scope for everything (so token is consistent)
-# This allows both reading (training) and writing (uploading)
-SCOPES = ['https://www.googleapis.com/auth/drive']
+FLANN_INDEX_KDITREE = 0
+flannParam = dict(algorithm=FLANN_INDEX_KDITREE, tree=5)
+flann = cv2.FlannBasedMatcher(flannParam, {})
 
 
 def get_drive_service():
     """
     Authenticate using OAuth (user account) - reuses saved token if available
-    Uses SINGLE scope for all operations to avoid re-authentication
     """
     creds = None
     
@@ -52,41 +76,41 @@ def get_drive_service():
         try:
             with open(TOKEN_FILE, 'rb') as token:
                 creds = pickle.load(token)
-            print(f"Key: Loaded saved credentials from {TOKEN_FILE}")
+            print(f"🔑 Loaded saved credentials")
         except Exception as e:
-            print(f"Error: Could not load token: {e}")
+            print(f"⚠️ Could not load token: {e}")
             creds = None
     
     # If no valid credentials, get new ones
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            print("Restart: Refreshing expired token...")
+            print("🔄 Refreshing expired token...")
             creds.refresh(Request())
-            print("Success: Token refreshed!")
+            print("✅ Token refreshed!")
         else:
             if not os.path.exists(GDRIVE_CREDENTIALS):
                 raise FileNotFoundError(
-                    f"Wrong Syntax: {GDRIVE_CREDENTIALS} not found!\n"
-                    "   1. Go to Google Cloud Console → APIs & Services → Credentials\n"
-                    "   2. Create OAuth client ID (Desktop app)\n"
-                    "   3. Download JSON and save as ./res/client_secret.json"
+                    f"❌ Credentials not found at: {GDRIVE_CREDENTIALS}\n"
+                    f"   Current directory: {os.getcwd()}\n"
+                    f"   Expected: {GDRIVE_CREDENTIALS}\n"
+                    "   Please ensure client_secret.json is in sift/res/ folder"
                 )
             
-            print("Secured: Opening browser for Google authentication...")
-            print("   (This will only happen once - credentials will be saved)")
+            print("🔐 Opening browser for Google authentication...")
+            print("   (This will only happen once)")
             flow = InstalledAppFlow.from_client_secrets_file(
                 GDRIVE_CREDENTIALS,
                 scopes=SCOPES
             )
             creds = flow.run_local_server(port=0)
-            print("Success: Authentication successful!")
+            print("✅ Authentication successful!")
         
         # Save token for future runs
         with open(TOKEN_FILE, 'wb') as token:
             pickle.dump(creds, token)
-            print(f"Credentials saved to {TOKEN_FILE} for future use")
+            print(f"💾 Credentials saved")
     else:
-        print("Success: Using existing valid credentials")
+        print("✅ Using existing valid credentials")
     
     return build('drive', 'v3', credentials=creds)
 
