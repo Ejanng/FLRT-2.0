@@ -437,10 +437,6 @@ The Scale-Invariant Feature Transform (SIFT) algorithm was patented by David Low
 
 This project uses OpenCV, which is licensed under the **Apache License 2.0**.
 
-### Your Code
-
-Consider adding your own license (e.g., MIT, Apache 2.0, or proprietary) for your specific implementation.
-
 ---
 
 ## Changelog
