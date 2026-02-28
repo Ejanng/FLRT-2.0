@@ -425,7 +425,21 @@ Common errors and solutions:
 
 ## License
 
-This implementation uses OpenCV's SIFT which may have patent restrictions in some regions. Check your local laws before commercial use.
+### SIFT Algorithm
+
+The Scale-Invariant Feature Transform (SIFT) algorithm was patented by David Lowe (US6711293B1) from 2000-2020. **The patent expired on March 6, 2020** and is now in the public domain worldwide, including the Philippines.
+
+- ✅ **Commercial use permitted** - No licensing fees
+- ✅ **Modification permitted** - Open source or proprietary
+- ✅ **Distribution permitted** - No restrictions
+
+### OpenCV License
+
+This project uses OpenCV, which is licensed under the **Apache License 2.0**.
+
+### Your Code
+
+Consider adding your own license (e.g., MIT, Apache 2.0, or proprietary) for your specific implementation.
 
 ---
 
