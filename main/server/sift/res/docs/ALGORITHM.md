@@ -1,6 +1,3 @@
-Here's the documentation for `algorithm.py` in Markdown format:
-
-```markdown
 # SIFT Image Matching Algorithm
 
 A Python implementation of Scale-Invariant Feature Transform (SIFT) for image feature extraction and matching, with Google Drive integration for cloud-based training and storage.
