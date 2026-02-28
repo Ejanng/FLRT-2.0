@@ -26,6 +26,9 @@ alembic/versions/*.py
 
 # gdrive credentials
 credentials.json
+client_secret.json
+token.pickle
+sift_database.pkl
 
 # ===============================
 # Node / Frontend (React)
