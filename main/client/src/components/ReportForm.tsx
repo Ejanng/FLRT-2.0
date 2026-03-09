@@ -64,18 +64,18 @@ const ReportForm: React.FC = () => {
   setSubmitStatus("");
 
   const dataToSend = new FormData();
-  dataToSend.append("itemName", formData.itemName);
+  dataToSend.append("item_name", formData.itemName);
   dataToSend.append("description", formData.description);
   dataToSend.append("status", formData.status);
   dataToSend.append("location", formData.location);
-  dataToSend.append("date", formData.date);
+  dataToSend.append("date_reported", formData.date);
 
   if (formData.photo) {
-    dataToSend.append("photo", formData.photo);
+    dataToSend.append("image", formData.photo);
   }
 
   try {
-    const response = await fetch("http://localhost:5000/reports/reports", {
+    const response = await fetch("http://localhost:5000/reports/report-item", {
       method: "POST",
       body: dataToSend,
     });

@@ -1,14 +1,31 @@
 from models.reports_model import Reports, db
+from datetime import datetime
 
 def submit_report(data):
+    required_fields = ['item_name', 'status', 'location']
+    missing_fields = [field for field in required_fields if not data.get(field)]
+    if missing_fields:
+        return None, f"Missing required fields: {', '.join(missing_fields)}"
+
+    reported_date = None
+    raw_date = data.get('date_reported')
+    if raw_date:
+        try:
+            reported_date = datetime.strptime(str(raw_date), '%Y-%m-%d')
+        except (TypeError, ValueError):
+            return None, "date_reported must be in YYYY-MM-DD format"
+
     new_report = Reports(
         item_name=data.get('item_name'),
         description=data.get('description'),
         status=data.get('status'),
         location=data.get('location'),
-        time=data.get('time'),
+        date_reported=reported_date,
         image=data.get('image')
     )
+
+    db.session.add(new_report)
+    db.session.commit()
 
     return new_report, None
 

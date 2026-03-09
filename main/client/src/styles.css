@@ -913,6 +913,44 @@
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
   }
 
+  .claim-item-summary {
+    border: 1px solid #dbe7f5;
+    border-radius: 10px;
+    background: #f8fbff;
+    padding: 12px;
+    margin-bottom: 16px;
+  }
+
+  .claim-item-summary h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: #2d3748;
+  }
+
+  .claim-item-summary p {
+    margin: 4px 0;
+    font-size: 12px;
+    color: #334155;
+  }
+
+  .claim-item-image {
+    margin-bottom: 10px;
+  }
+
+  .claim-item-image img {
+    width: 100%;
+    max-height: 180px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+  }
+
+  .claim-warning-text {
+    margin-top: 8px;
+    color: #b91c1c;
+    font-weight: 600;
+  }
+
   /* ===== Form Group ===== */
   .claim-form-group {
     margin-bottom: 15px;
@@ -1027,6 +1065,12 @@
   .claim-submit-btn:hover {
     background: #4a7599;
     transform: translateY(-2px);
+  }
+
+  .claim-submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
   }
 
   .claim-cancel-btn {
@@ -1217,6 +1261,10 @@
   cursor: pointer; 
   text-decoration: none; 
   transition: color 0.3s ease, transform 0.2s ease; 
+  background: transparent;
+  border: none;
+  padding: 0;
+  display: inline-block;
 }
 
 

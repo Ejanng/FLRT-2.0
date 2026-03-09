@@ -3,12 +3,32 @@ from models.reports_model import Reports
 from models.admins_model import Admins
 from models.returns_model import Returns
 
+
+def get_all_claims():
+    claims = PendingClaims.query.order_by(PendingClaims.date_claimed.desc()).all()
+
+    return [
+        {
+            'claim_id': claim.claim_id,
+            'report_id': claim.report_id,
+            'item_name': claim.report.item_name if claim.report else None,
+            'student_name': claim.student_name,
+            'student_number': claim.student_number,
+            'contact_info': claim.contact_info,
+            'description': claim.description,
+            'status': claim.status,
+            'image': claim.image,
+            'date_claimed': claim.date_claimed.isoformat() if claim.date_claimed else None,
+        }
+        for claim in claims
+    ]
+
 def submit_claim_item(data):
     student_number = data['student_number']
 
     report = Reports.query.filter(
         Reports.report_id == data['report_id'],
-        Reports.status == 'found'
+        Reports.status.in_(['found', 'lost', 'published', 'published_found', 'published_lost'])
     ).first()
 
     if not report:

@@ -3,6 +3,15 @@ import AdminDashboard from '../../../components/adminDashboard';
 import { useState, useEffect } from 'react';
 
 const CLAIM_PUBLISH_TRIGGER_KEY = 'claimableReportsRefreshToken';
+const API_BASE_URL = 'http://localhost:5000';
+
+const resolveImageUrl = (imageValue: string | null | undefined): string => {
+  if (!imageValue) return '';
+  if (imageValue.startsWith('http://') || imageValue.startsWith('https://')) {
+    return imageValue;
+  }
+  return `${API_BASE_URL}/reports/images/${encodeURIComponent(imageValue)}`;
+};
 
 type ReportRow = {
   id: string;
@@ -11,6 +20,7 @@ type ReportRow = {
   location: string;
   date: string;
   status: string;
+  image: string;
 };
 
 export const Route = createFileRoute('/admin/dashboard/reports')({
@@ -40,6 +50,7 @@ function ReportsPage() {
           location: report.location || '',
           date: report.date_reported ? new Date(report.date_reported).toLocaleDateString() : '',
           status: report.status || '',
+          image: resolveImageUrl(report.image),
         }));
         setReports(mappedReports);
       } else {
@@ -197,6 +208,17 @@ function ReportsPage() {
               <div className="form-group">
                 <label>Status:</label>
                 <input type="text" value={selectedReport.status} readOnly />
+              </div>
+
+              <div className="form-group">
+                <label>Uploaded Image:</label>
+                {selectedReport.image ? (
+                  <div className="photo-preview">
+                    <img src={selectedReport.image} alt={`Uploaded proof for report ${selectedReport.id}`} />
+                  </div>
+                ) : (
+                  <input type="text" value="No image uploaded" readOnly />
+                )}
               </div>
 
               <div className="form-actions">

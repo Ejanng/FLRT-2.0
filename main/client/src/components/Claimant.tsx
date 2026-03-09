@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
+  type PaginationState,
   useReactTable,
   getCoreRowModel,
   getFilteredRowModel,
@@ -53,6 +54,10 @@ export const Claimant: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
   const [typeFilter, setTypeFilter] = useState('All Types');
   const [loadMessage, setLoadMessage] = useState('Loading reports...');
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 9,
+  });
   const navigate = useNavigate();
 
   const fetchPublishedReports = async () => {
@@ -109,8 +114,9 @@ export const Claimant: React.FC = () => {
   const table = useReactTable({
     data: filteredData,
     columns,
-    state: { globalFilter, pagination: { pageIndex: 0, pageSize: 9 } },
+    state: { globalFilter, pagination },
     onGlobalFilterChange: setGlobalFilter,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -122,9 +128,12 @@ export const Claimant: React.FC = () => {
       search: {
         id: item.id,
         name: item.name,
+        description: item.description,
         location: item.location,
         date: item.date,
         category: item.category,
+        status: item.status,
+        image: item.image,
       },
     });
   };
