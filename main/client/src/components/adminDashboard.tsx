@@ -3,12 +3,19 @@ import {
   Box,
   Clock,
   CheckCircle,
-  TrendingUp,
   Search,
 } from "lucide-react";
 
 import "../styles.css";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+
+const API_BASE_URL = "http://localhost:5000";
+
+type DashboardStats = {
+  total_reports: number;
+  pending_claims: number;
+  resolved_claims: number;
+};
 
 type AdminDashboardProps = {
   children?: ReactNode;
@@ -16,6 +23,11 @@ type AdminDashboardProps = {
 
 export default function AdminDashboard({ children }: AdminDashboardProps) {
   const navigate = useNavigate();
+  const [stats, setStats] = useState<DashboardStats>({
+    total_reports: 0,
+    pending_claims: 0,
+    resolved_claims: 0,
+  });
 
   const handleTabClick = (tab: string) => {
     switch (tab) {
@@ -33,33 +45,60 @@ export default function AdminDashboard({ children }: AdminDashboardProps) {
     }
   };
 
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const token = localStorage.getItem("admin_token");
+        let response = await fetch(`${API_BASE_URL}/stats/admin-dashboard`, {
+          headers: token
+            ? {
+                Authorization: `Bearer ${token}`,
+              }
+            : undefined,
+        });
+
+        if (!response.ok) {
+          response = await fetch(`${API_BASE_URL}/stats/dashboard`);
+        }
+
+        if (!response.ok) {
+          console.error(`Failed to load dashboard stats: ${response.status}`);
+          return;
+        }
+
+        const data = (await response.json()) as Partial<DashboardStats>;
+        setStats({
+          total_reports: Number(data.total_reports ?? 0),
+          pending_claims: Number(data.pending_claims ?? 0),
+          resolved_claims: Number(data.resolved_claims ?? 0),
+        });
+      } catch (error) {
+        console.error("Failed to load dashboard stats", error);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
   return (
     <div className="admin-dashboard">
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-icon blue"><Box size={18} /></div>
           <div className="stat-title">Total Reports</div>
-          <div className="stat-value">267</div>
-          <div className="stat-change positive">+12.5%</div>
+          <div className="stat-value">{stats.total_reports}</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon orange"><Clock size={18} /></div>
           <div className="stat-title">Pending Claims</div>
-          <div className="stat-value">0</div>
-          <div className="stat-change positive">+5.2%</div>
+          <div className="stat-value">{stats.pending_claims}</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon green"><CheckCircle size={18} /></div>
           <div className="stat-title">Resolved</div>
-          <div className="stat-value">90</div>
-          <div className="stat-change positive">+18.3%</div>
+          <div className="stat-value">{stats.resolved_claims}</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-icon purple"><TrendingUp size={18} /></div>
-          <div className="stat-title">Active Users</div>
-          <div className="stat-value">1</div>
-          <div className="stat-change positive">+24.1%</div>
-        </div>
+  
       </div>
 
       <div className="reports-card">
