@@ -27,3 +27,5 @@ class Config:
     SESSION_REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
     SESSION_REDIS_DB = int(os.getenv('REDIS_DB', 0))
 
+    GDRIVE_URL = os.getenv('GDRIVE_URL')
+
