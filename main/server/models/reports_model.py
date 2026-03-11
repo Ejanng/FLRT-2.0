@@ -12,8 +12,6 @@ class Reports(db.Model):
     date_reported = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)
     time = db.Column(db.Time, nullable=True)                    # item to be added in the future
     image = db.Column(db.String(255), nullable=True)            # image of the item
-    date_reported = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)  # date when the report was made
-
     pending_claim = db.relationship("PendingClaims", back_populates="report", lazy="select")
     returns = db.relationship("Returns", back_populates="report", lazy="select")
 
@@ -28,6 +26,5 @@ class Reports(db.Model):
             'location': self.location,
             'date_reported': self.date_reported.isoformat(),
             'time': self.time.isoformat() if self.time else None,
-            'image': self.image,
-            'date_reported': self.date_reported.isoformat()
+            'image': self.image
         }
