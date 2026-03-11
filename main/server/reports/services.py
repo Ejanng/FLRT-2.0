@@ -67,13 +67,13 @@ def process_report_with_image_url(image_url, data, new_report):
         tuple: (claim_object or None, message_string, status_string)
     """
 
-    print(f"DEBUG: Starting process_report_with_image_url")
-    print(f"DEBUG: image_url = {image_url}")
+    # print(f"DEBUG: Starting process_report_with_image_url")
+    # print(f"DEBUG: image_url = {image_url}")
     # Process the image and get the result
     result = process_image(image_url)
 
-    print(f"DEBUG: process_image returned type = {type(result)}")
-    print(f"DEBUG: process_image returned = {result}")
+    # print(f"DEBUG: process_image returned type = {type(result)}")
+    # print(f"DEBUG: process_image returned = {result}")
 
     # Check if processing succeeded
     if not result:
