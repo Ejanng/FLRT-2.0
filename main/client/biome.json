@@ -21,6 +21,14 @@
 		"indentStyle": "tab"
 	},
 	"assist": { "actions": { "source": { "organizeImports": "on" } } },
+	"css": {
+		"parser": {
+		"cssModules": true
+		},
+		"linter": {
+		"enabled": true
+		}
+	},
 	"linter": {
 		"enabled": true,
 		"rules": {
