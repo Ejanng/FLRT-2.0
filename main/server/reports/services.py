@@ -1,7 +1,3 @@
-# 
-
-
-
 
 from models.reports_model import Reports, db
 from sift.services import process_image, train_model
@@ -9,19 +5,27 @@ from core.config import Config
 from models.pending_claims_model import PendingClaims
 from datetime import datetime, timezone
 
-def submit_report(data):
+def submit_report(data, image_url=None):
+    """
+    Create a new report.
+    
+    Args:
+        data: Dict with report fields
+        image_url: Optional URL/path to uploaded image
+    """
     new_report = Reports(
         item_name=data.get('item_name'),
         description=data.get('description'),
         status=data.get('status'),
         location=data.get('location'),
-        time=data.get('time'),
-        image=data.get('image'),
+        time=data.get('time') or None,
+        image=image_url,
         date_reported=datetime.now(timezone.utc)
     )
+    
     db.session.add(new_report)
     db.session.commit()
-
+    
     return new_report
 
 def get_all_reports():
@@ -82,6 +86,16 @@ def process_report_with_image_url(image_url, data, new_report):
     # No match found in database
     if not result.get('success'):
         return None, "No match found in database. Report recorded for manual review.", "No Match"
+    
+    
+    student_name = data.get('student_name')
+    student_number = data.get('student_number')
+    contact_info = data.get('contact_info')
+
+    if not student_name or not student_number or not contact_info:
+        # implement in the future to prompt the user to complete the missing information
+        # expected to return a response to the frontend to indicate which fields are missing and ask the user to fill them in before proceeding with claim creation
+        return None, "Match found but missing required claim information", "Incomplete Data"
 
     # Extract match information
     matched_name = result.get("matched_image", {}).get("name")
@@ -116,6 +130,14 @@ def process_report_with_image_url(image_url, data, new_report):
         db.session.rollback()
         print(f"Database error creating claim: {e}")
         return None, "Match found but failed to create claim", "Database Error"
+
+
+# to be removed
+    # new_claim, message, process_result = try_commit_pending_claim(report_id, data, matched_source, matched_gdrive_id, image_url, matched_name)
+    # return new_claim, message, process_result
+
+# def try_commit_pending_claim(report_id, data, matched_source, matched_gdrive_id, image_url, matched_name):
+    
 
 
 # def train_model_upon_report(image_url, report):
