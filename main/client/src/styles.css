@@ -1256,3 +1256,175 @@
   padding: 4px 8px;
   border-radius: 4px;
 }
+
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+}
+
+.modal-close:hover {
+  color: #000;
+}
+
+/* Match Alert */
+.match-alert {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.match-icon {
+  background: #22c55e;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.match-alert p {
+  margin: 0;
+  color: #166534;
+  font-size: 0.9rem;
+}
+
+/* Personal Info Form */
+.personal-info-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.personal-info-form .form-group {
+  margin-bottom: 0;
+}
+
+.personal-info-form input.error {
+  border-color: #ef4444;
+}
+
+.error-text {
+  color: #ef4444;
+  font-size: 0.8rem;
+  margin-top: 4px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+/* Match Result Card */
+.match-result-card {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.match-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.match-badge {
+  background: #22c55e;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.match-score {
+  color: #166534;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.match-details p {
+  margin: 0 0 8px 0;
+  color: #374151;
+}
+
+.view-image-link {
+  color: #2563eb;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.view-image-link:hover {
+  text-decoration: underline;
+}
+
+/* Optional label styling */
+.optional {
+  font-weight: normal;
+  color: #6b7280;
+  font-size: 0.85em;
+}
+
+/* Upload hint text */
+.upload-hint {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-top: 8px;
+  font-style: italic;
+}
