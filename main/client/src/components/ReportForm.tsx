@@ -1,25 +1,318 @@
 import React, { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useMutation } from "@tanstack/react-query";
 import "../styles.css";
+
+// Types
+interface ReportFormData {
+  itemName: string;
+  description: string;
+  status: "lost" | "found" | "";
+  location: string;
+  date: string;
+  time?: string;
+  photo: File | null;
+  // Optional personal info (required for lost items with matches)
+  studentName?: string;
+  studentNumber?: string;
+  contactInfo?: string;
+}
+
+interface ApiResponse {
+  message: string;
+  report: {
+    report_id: number;
+    item_name: string;
+    description: string;
+    status: string;
+    location: string;
+    date_reported: string;
+    image?: string;
+  };
+  new_pending_claim?: {
+    claim_id: number;
+    report_id: number;
+    student_name: string;
+    student_number: string;
+    contact_info: string;
+    status: string;
+    image: string;
+    date_claimed: string;
+  };
+  match_result?: string;
+  missing_fields?: string;
+}
+
+interface MatchResult {
+  name: string;
+  score: number;
+  source_url?: string;
+  gdrive_view_link?: string;
+}
+
+// Personal Info Modal Component
+const PersonalInfoModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (info: {
+    studentName: string;
+    studentNumber: string;
+    contactInfo: string;
+  }) => void;
+  isLoading: boolean;
+  matchFound: boolean;
+}> = ({ isOpen, onClose, onSubmit, isLoading, matchFound }) => {
+  const [info, setInfo] = useState({
+    studentName: "",
+    studentNumber: "",
+    contactInfo: "",
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  if (!isOpen) return null;
+
+  const validate = () => {
+    const newErrors: Record<string, string> = {};
+    if (!info.studentName.trim()) newErrors.studentName = "Required";
+    if (!info.studentNumber.trim()) newErrors.studentNumber = "Required";
+    if (!info.contactInfo.trim()) {
+      newErrors.contactInfo = "Required";
+    } else if (
+      !info.contactInfo.includes("@") &&
+      !info.contactInfo.startsWith("09")
+    ) {
+      newErrors.contactInfo = "Enter valid email or phone";
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (validate()) onSubmit(info);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>Additional Information Required</h3>
+          <button className="modal-close" onClick={onClose}>
+            ×
+          </button>
+        </div>
+
+        {matchFound && (
+          <div className="match-alert">
+            <span className="match-icon">✓</span>
+            <p>
+              A potential match was found! Please provide your contact details to
+              proceed with the claim.
+            </p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="personal-info-form">
+          <div className="form-group">
+            <label>
+              Student Name <span className="required">*</span>
+            </label>
+            <input
+              type="text"
+              value={info.studentName}
+              onChange={(e) =>
+                setInfo((prev) => ({ ...prev, studentName: e.target.value }))
+              }
+              placeholder="Juan Dela Cruz"
+              className={errors.studentName ? "error" : ""}
+            />
+            {errors.studentName && (
+              <span className="error-text">{errors.studentName}</span>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label>
+              Student Number <span className="required">*</span>
+            </label>
+            <input
+              type="text"
+              value={info.studentNumber}
+              onChange={(e) =>
+                setInfo((prev) => ({ ...prev, studentNumber: e.target.value }))
+              }
+              placeholder="2024-12345"
+              className={errors.studentNumber ? "error" : ""}
+            />
+            {errors.studentNumber && (
+              <span className="error-text">{errors.studentNumber}</span>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label>
+              Contact Info (Email/Phone) <span className="required">*</span>
+            </label>
+            <input
+              type="text"
+              value={info.contactInfo}
+              onChange={(e) =>
+                setInfo((prev) => ({ ...prev, contactInfo: e.target.value }))
+              }
+              placeholder="juan@example.com or 09123456789"
+              className={errors.contactInfo ? "error" : ""}
+            />
+            {errors.contactInfo && (
+              <span className="error-text">{errors.contactInfo}</span>
+            )}
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="btn primary" disabled={isLoading}>
+              {isLoading ? "Submitting..." : matchFound ? "Create Claim" : "Complete Report"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Match Result Card Component
+const MatchResultCard: React.FC<{ match: MatchResult }> = ({ match }) => {
+  return (
+    <div className="match-result-card">
+      <div className="match-header">
+        <span className="match-badge">Potential Match Found</span>
+        <span className="match-score">Score: {match.score}</span>
+      </div>
+      <div className="match-details">
+        <p>
+          <strong>Matched Item:</strong> {match.name}
+        </p>
+        {match.gdrive_view_link && (
+          <a
+            href={match.gdrive_view_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="view-image-link"
+          >
+            View Matched Image →
+          </a>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const ReportForm: React.FC = () => {
   const navigate = useNavigate();
-  const initialFormData = {
+  
+  const initialFormData: ReportFormData = {
     itemName: "",
     description: "",
     status: "",
     location: "",
     date: "",
-    photo: null as File | null,
+    time: "",
+    photo: null,
   };
-  const [formData, setFormData] = useState({
-    ...initialFormData,
-  });
 
+  const [formData, setFormData] = useState<ReportFormData>({ ...initialFormData });
+  const [pendingData, setPendingData] = useState<ReportFormData | null>(null);
+  
   const [photoPreview, setPhotoPreview] = useState<string>("");
   const [submitMessage, setSubmitMessage] = useState<string>("");
   const [submitStatus, setSubmitStatus] = useState<"success" | "error" | "">("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [showPersonalInfoModal, setShowPersonalInfoModal] = useState(false);
+  const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
+
+  // TanStack Query Mutation - image now optional
+  const submitMutation = useMutation({
+    mutationFn: async (data: ReportFormData): Promise<ApiResponse> => {
+      const formDataToSend = new FormData();
+      formDataToSend.append("item_name", data.itemName);
+      formDataToSend.append("description", data.description);
+      formDataToSend.append("status", data.status);
+      formDataToSend.append("location", data.location);
+      formDataToSend.append("date", data.date);
+      formDataToSend.append("time", data.time || "");
+
+      // Image is now optional - only append if exists
+      if (data.photo) {
+        formDataToSend.append("image", data.photo);
+      }
+
+      if (data.studentName) {
+        formDataToSend.append("student_name", data.studentName);
+        formDataToSend.append("student_number", data.studentNumber || "");
+        formDataToSend.append("contact_info", data.contactInfo || "");
+      }
+
+      const response = await fetch("http://localhost:5000/reports/report-item", {
+        method: "POST",
+        body: formDataToSend,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        let errorMessage = "Failed to submit report";
+        try {
+          const errorJson = JSON.parse(text);
+          errorMessage = errorJson.error || errorMessage;
+        } catch {
+          errorMessage = text || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      return response.json();
+    },
+    onSuccess: (data, variables) => {
+      // Only show personal info modal if match found AND missing fields
+      if (data.missing_fields === "Missing") {
+        setPendingData(variables);
+        const hasMatch = data.message.toLowerCase().includes("match found");
+        if (hasMatch) {
+          setMatchResult({
+            name: "Potential Match",
+            score: 0,
+            source_url: undefined,
+          });
+        }
+        setShowPersonalInfoModal(true);
+        return;
+      }
+
+      setSubmitStatus("success");
+      setSubmitMessage(data.message);
+
+      if (data.new_pending_claim) {
+        setMatchResult({
+          name: data.new_pending_claim.image.split("/").pop() || "Matched Item",
+          score: 0,
+          source_url: data.new_pending_claim.image,
+          gdrive_view_link: data.new_pending_claim.image,
+        });
+      }
+
+      setFormData(initialFormData);
+      setPhotoPreview("");
+    },
+    onError: (error) => {
+      setSubmitStatus("error");
+      setSubmitMessage(
+        error instanceof Error ? error.message : "An error occurred. Please try again."
+      );
+    },
+  });
+
+  const isLoading = submitMutation.isPending || isSubmitting;
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -57,51 +350,38 @@ const ReportForm: React.FC = () => {
     }
   };
 
- const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setIsSubmitting(true);
-  setSubmitMessage("");
-  setSubmitStatus("");
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setSubmitMessage("");
+    setSubmitStatus("");
 
-  const dataToSend = new FormData();
-  dataToSend.append("itemName", formData.itemName);
-  dataToSend.append("description", formData.description);
-  dataToSend.append("status", formData.status);
-  dataToSend.append("location", formData.location);
-  dataToSend.append("date", formData.date);
-
-  if (formData.photo) {
-    dataToSend.append("photo", formData.photo);
-  }
-
-  try {
-    const response = await fetch("http://localhost:5000/reports/reports", {
-      method: "POST",
-      body: dataToSend,
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Form submitted successfully:", data);
-      setSubmitStatus("success");
-      setSubmitMessage("Report submitted successfully!");
-      setFormData(initialFormData);
-      setPhotoPreview("");
-    } else {
-      const errorBody = await response.json().catch(() => null);
-      const errorMessage = errorBody?.error || "Failed to submit report.";
-      console.error("Failed to submit report:", errorMessage);
-      setSubmitStatus("error");
-      setSubmitMessage(`${errorMessage} Please try again.`);
+    try {
+      await submitMutation.mutateAsync(formData);
+    } finally {
+      setIsSubmitting(false);
     }
-  } catch (error) {
-    console.error("Error submitting report:", error);
-    setSubmitStatus("error");
-    setSubmitMessage("An error occurred. Please try again.");
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
+
+  const handlePersonalInfoSubmit = (info: {
+    studentName: string;
+    studentNumber: string;
+    contactInfo: string;
+  }) => {
+    if (!pendingData) return;
+
+    const completeData: ReportFormData = {
+      ...pendingData,
+      studentName: info.studentName,
+      studentNumber: info.studentNumber,
+      contactInfo: info.contactInfo,
+    };
+
+    setShowPersonalInfoModal(false);
+    setPendingData(null);
+    submitMutation.mutate(completeData);
+  };
+
   const characterCount = formData.description.length;
   const maxCharacters = 1000;
   const minCharacters = 10;
@@ -111,10 +391,20 @@ const ReportForm: React.FC = () => {
       <div className="report-container">
         <form className="report-form" onSubmit={handleSubmit}>
           {submitMessage && (
-            <div className={`form-message ${submitStatus === "success" ? "success" : "error"}`}>
+            <div
+              className={`form-message ${
+                submitStatus === "success" ? "success" : "error"
+              }`}
+            >
               {submitMessage}
             </div>
           )}
+
+          {/* Match Result Card */}
+          {matchResult && submitStatus === "success" && (
+            <MatchResultCard match={matchResult} />
+          )}
+
           {/* Item Name */}
           <div className="form-group">
             <label htmlFor="itemName">
@@ -141,7 +431,7 @@ const ReportForm: React.FC = () => {
               name="description"
               value={formData.description}
               onChange={handleInputChange}
-              placeholder="Provide detailed description (color, size, distinguishing features)"
+              placeholder="Provide detailed description (color, size, distinguishing features, brand, etc.)"
               rows={5}
               maxLength={maxCharacters}
               required
@@ -201,9 +491,23 @@ const ReportForm: React.FC = () => {
             <div className="field-helper">When was the item lost or found?</div>
           </div>
 
-          {/* Photo Upload */}
+          {/* Time - Optional */}
           <div className="form-group">
-            <label htmlFor="photo">Item Photo (Optional)</label>
+            <label htmlFor="time">Time (Optional)</label>
+            <input
+              type="time"
+              id="time"
+              name="time"
+              value={formData.time}
+              onChange={handleInputChange}
+            />
+          </div>
+
+          {/* Photo Upload - Now Optional */}
+          <div className="form-group">
+            <label htmlFor="photo">
+              Item Photo <span className="optional">(Optional - helps with matching)</span>
+            </label>
             <div
               className="photo-upload-area"
               onDragOver={handleDragOver}
@@ -243,6 +547,7 @@ const ReportForm: React.FC = () => {
                     <span className="upload-link">Click to upload</span> or drag and drop
                   </p>
                   <p className="upload-formats">JPEG, PNG, GIF, or WebP (Max 5MB)</p>
+                  <p className="upload-hint">Adding a photo helps us match lost & found items automatically</p>
                 </>
               )}
               <input
@@ -258,8 +563,8 @@ const ReportForm: React.FC = () => {
 
           {/* Form Actions */}
           <div className="form-actions">
-            <button type="submit" className="btn primary" disabled={isSubmitting}>
-              {isSubmitting ? "Submitting..." : "Submit Report"}
+            <button type="submit" className="btn primary" disabled={isLoading}>
+              {isLoading ? "Processing..." : "Submit Report"}
             </button>
             <button
               type="button"
@@ -271,6 +576,19 @@ const ReportForm: React.FC = () => {
           </div>
         </form>
       </div>
+
+      {/* Personal Info Modal */}
+      <PersonalInfoModal
+        isOpen={showPersonalInfoModal}
+        onClose={() => {
+          setShowPersonalInfoModal(false);
+          setPendingData(null);
+          setMatchResult(null);
+        }}
+        onSubmit={handlePersonalInfoSubmit}
+        isLoading={submitMutation.isPending}
+        matchFound={!!matchResult}
+      />
     </div>
   );
 };
