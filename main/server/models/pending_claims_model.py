@@ -8,7 +8,7 @@ class PendingClaims(db.Model):
     report_id = db.Column(db.Integer, db.ForeignKey('reports.report_id'), nullable=False)  # foreign key to the report being claimed
     student_name = db.Column(db.String(100), nullable=True)      # name of the student claiming the item
     student_number = db.Column(db.String(20), nullable=True)     # student number of the claimant
-    contact_info = db.Column(db.String(100), nullable=True)     # contact information of the claimant
+    contact_info = db.Column(db.String(100), nullable=False)     # contact information of the claimant
     description = db.Column(db.Text, nullable=False)            # description of the claim
     status = db.Column(db.String(20), nullable=False, default='pending')  # status of the claim (pending, accepted, rejected)
     image = db.Column(db.String(255), nullable=True)            # image of the claim
