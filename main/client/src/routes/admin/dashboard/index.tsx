@@ -29,6 +29,16 @@ function DashboardPage() {
     { icon: TrendingUp, label: 'Users', value: '1', color: 'purple' },
   ]
 
+  // Add inside DashboardPage component, after stats array
+  useEffect(() => {
+    const handleStorage = () => {
+      // Refresh data when reports are updated
+      window.location.reload()
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [])
+
   return (
     <div className="min-h-screen p-6">
       <div className="max-w-7xl mx-auto space-y-6">
