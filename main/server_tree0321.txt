@@ -1,0 +1,74 @@
+server
+├── app.py
+├── auth
+│   ├── decorators.py
+│   ├── __pycache__
+│   │   ├── decorators.cpython-312.pyc
+│   │   ├── routes.cpython-312.pyc
+│   │   ├── services.cpython-312.pyc
+│   │   └── token.cpython-312.pyc
+│   ├── routes.py
+│   ├── services.py
+│   └── token.py
+├── claims
+│   ├── __pycache__
+│   │   ├── routes.cpython-312.pyc
+│   │   └── services.cpython-312.pyc
+│   ├── routes.py
+│   └── services.py
+├── core
+│   ├── config.py
+│   ├── extensions.py
+│   └── __pycache__
+│       ├── config.cpython-312.pyc
+│       └── extensions.cpython-312.pyc
+├── DOCUMENTATION.md
+├── models
+│   ├── admins_model.py
+│   ├── __init__.py
+│   ├── pending_claims_model.py
+│   ├── __pycache__
+│   │   ├── admins_model.cpython-312.pyc
+│   │   ├── claims_model.cpython-312.pyc
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── pending_claims_model.cpython-312.pyc
+│   │   ├── reports_model.cpython-312.pyc
+│   │   └── returns_model.cpython-312.pyc
+│   ├── reports_model.py
+│   └── returns_model.py
+├── reports
+│   ├── __pycache__
+│   │   ├── routes.cpython-312.pyc
+│   │   └── services.cpython-312.pyc
+│   ├── REMINDER.md
+│   ├── routes.py
+│   └── services.py
+├── requirements.txt
+├── sift
+│   ├── algorithm.py
+│   ├── __pycache__
+│   │   ├── algorithm.cpython-312.pyc
+│   │   ├── routes.cpython-312.pyc
+│   │   └── services.cpython-312.pyc
+│   ├── res
+│   │   ├── client_secret.json
+│   │   ├── credentials.json
+│   │   ├── docs
+│   │   │   ├── ALGORITHM.md
+│   │   │   └── ROUTES.md
+│   │   ├── reports
+│   │   │   └── report1.jpg
+│   │   ├── sift_database.pkl
+│   │   ├── token.pickle
+│   │   └── train
+│   │       └── train1.jpg
+│   ├── routes.py
+│   └── services.py
+└── stats
+    ├── __pycache__
+    │   ├── routes.cpython-312.pyc
+    │   └── services.cpython-312.pyc
+    ├── routes.py
+    └── services.py
+
+19 directories, 53 files

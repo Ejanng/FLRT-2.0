@@ -1,6 +1,9 @@
+// client/src/routes/admin/dashboard/reports.tsx
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Search, X, CheckCircle, XCircle, Eye, Loader2, Check, Trash2 } from 'lucide-react'
+import { reportsApi } from '../../../services/api'
 
 interface Report {
   report_id: string
@@ -19,30 +22,50 @@ export const Route = createFileRoute('/admin/dashboard/reports')({
 
 function ReportsPage() {
   const navigate = useNavigate()
-  const [reports, setReports] = useState<Report[]>([])
+  const queryClient = useQueryClient()
   const [selectedReport, setSelectedReport] = useState<Report | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [actionLoading, setActionLoading] = useState(false)
   const [message, setMessage] = useState('')
 
-  const fetchReports = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch('http://localhost:5000/reports/all-reports')
-      if (!response.ok) throw new Error('Failed to fetch')
-      const data = await response.json()
-      setReports(data.reports || [])
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const { data: reportsData, isLoading } = useQuery({
+    queryKey: ['all-reports'],
+    queryFn: reportsApi.getAll,
+  })
 
-  useEffect(() => {
-    fetchReports()
-  }, [])
+  const reports = reportsData?.reports || []
+
+  const publishMutation = useMutation({
+    mutationFn: (reportId: number) => reportsApi.publish(reportId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-reports'] })
+      queryClient.invalidateQueries({ queryKey: ['claimable-reports'] })
+      setMessage('Report published successfully! Now visible in Claim page.')
+      setTimeout(() => {
+        setIsModalOpen(false)
+        setSelectedReport(null)
+        setMessage('')
+      }, 1500)
+    },
+    onError: (error: any) => {
+      setMessage(error.message || 'Failed to publish report')
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (reportId: string) => reportsApi.delete(reportId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-reports'] })
+      setMessage('Report rejected and deleted.')
+      setTimeout(() => {
+        setIsModalOpen(false)
+        setSelectedReport(null)
+        setMessage('')
+      }, 1500)
+    },
+    onError: (error: any) => {
+      setMessage(error.message || 'Failed to delete report')
+    },
+  })
 
   const handleView = (report: Report) => {
     setSelectedReport(report)
@@ -50,73 +73,15 @@ function ReportsPage() {
     setMessage('')
   }
 
-  const handlePublish = async () => {
+  const handlePublish = () => {
     if (!selectedReport) return
-    
-    setActionLoading(true)
-    setMessage('')
-    
-    try {
-      const response = await fetch('http://localhost:5000/reports/publish-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ report_id: parseInt(selectedReport.report_id) }),
-      })
-
-      const data = await response.json()
-      
-      if (!response.ok) throw new Error(data.error || 'Failed to publish')
-
-      setMessage('Report published successfully! Now visible in Claim page.')
-      
-      // Update local state
-      setReports(prev => prev.map(r => 
-        r.report_id === selectedReport.report_id 
-          ? { ...r, status: 'published_' + r.status }
-          : r
-      ))
-      
-      // Trigger refresh in Claim page
-      localStorage.setItem('claimableReportsRefreshToken', Date.now().toString())
-      
-      setTimeout(() => {
-        setIsModalOpen(false)
-        setSelectedReport(null)
-      }, 1500)
-    } catch (err: any) {
-      setMessage(err.message || 'Failed to publish report')
-    } finally {
-      setActionLoading(false)
-    }
+    publishMutation.mutate(parseInt(selectedReport.report_id))
   }
 
-  const handleReject = async () => {
+  const handleReject = () => {
     if (!selectedReport) return
-    
     if (!confirm('Are you sure you want to reject and delete this report?')) return
-    
-    setActionLoading(true)
-    
-    try {
-      const response = await fetch(`http://localhost:5000/reports/delete-report/${selectedReport.report_id}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) throw new Error('Failed to delete')
-
-      setMessage('Report rejected and deleted.')
-      
-      setReports(prev => prev.filter(r => r.report_id !== selectedReport.report_id))
-      
-      setTimeout(() => {
-        setIsModalOpen(false)
-        setSelectedReport(null)
-      }, 1500)
-    } catch (err: any) {
-      setMessage(err.message || 'Failed to delete report')
-    } finally {
-      setActionLoading(false)
-    }
+    deleteMutation.mutate(selectedReport.report_id)
   }
 
   const getStatusBadge = (status: string) => {
@@ -131,11 +96,16 @@ function ReportsPage() {
 
   const isPublished = (status: string) => status.startsWith('published')
 
+  const getImageUrl = (imagePath: string) => {
+    if (!imagePath) return 'https://via.placeholder.com/400x200?text=No+Image'
+    if (imagePath.startsWith('http')) return imagePath
+    return `http://localhost:5000/reports/images/${encodeURIComponent(imagePath)}`
+  }
+
   return (
     <div className="min-h-screen p-6">
       <div className="max-w-7xl mx-auto">
         <div className="glass-card rounded-2xl overflow-hidden">
-          {/* Tabs */}
           <div className="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
             <button 
               onClick={() => navigate({ to: '/admin/dashboard' })}
@@ -154,7 +124,6 @@ function ReportsPage() {
             </button>
           </div>
 
-          {/* Search */}
           <div className="p-4 border-b border-gray-200 dark:border-gray-800">
             <div className="relative max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -162,7 +131,6 @@ function ReportsPage() {
             </div>
           </div>
 
-          {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-800/50">
@@ -187,7 +155,7 @@ function ReportsPage() {
                     <td colSpan={6} className="px-4 py-8 text-center text-gray-500">No reports found</td>
                   </tr>
                 ) : (
-                  reports.map((report) => (
+                  reports.map((report: Report) => (
                     <tr key={report.report_id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">#{report.report_id}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{report.item_name}</td>
@@ -213,7 +181,6 @@ function ReportsPage() {
         </div>
       </div>
 
-      {/* Review Modal */}
       {isModalOpen && selectedReport && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-[#1e1e2e] rounded-2xl max-w-lg w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -235,12 +202,11 @@ function ReportsPage() {
               </div>
             )}
 
-            {/* Report Details */}
             <div className="space-y-4 mb-6">
               {selectedReport.image && (
                 <div className="rounded-xl overflow-hidden">
                   <img 
-                    src={selectedReport.image.startsWith('http') ? selectedReport.image : `http://localhost:5000/reports/images/${encodeURIComponent(selectedReport.image)}`}
+                    src={getImageUrl(selectedReport.image)}
                     alt={selectedReport.item_name}
                     className="w-full h-48 object-cover"
                     onError={(e) => {
@@ -277,24 +243,23 @@ function ReportsPage() {
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-3">
               {!isPublished(selectedReport.status) ? (
                 <>
                   <button
                     onClick={handlePublish}
-                    disabled={actionLoading}
+                    disabled={publishMutation.isPending}
                     className="flex-1 btn-primary flex items-center justify-center gap-2 py-3"
                   >
-                    {actionLoading ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+                    {publishMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
                     Approve & Publish
                   </button>
                   <button
                     onClick={handleReject}
-                    disabled={actionLoading}
+                    disabled={deleteMutation.isPending}
                     className="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                   >
-                    {actionLoading ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
+                    {deleteMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
                     Reject & Delete
                   </button>
                 </>

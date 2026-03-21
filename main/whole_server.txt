@@ -1,0 +1,2122 @@
+
+server/
+├── app.py
+from flask import Flask
+from core.config import Config
+from core.extensions import db, bcrypt, jwt, cors
+from auth.routes import auth_bp
+from reports.routes import report_bp
+from claims.routes import claim_bp
+from stats.routes import stats_bp  # New!
+from models import *
+from sift.routes import sift_bp
+
+def create_app():
+    app = Flask(__name__)
+    app.config.from_object(Config)
+
+    db.init_app(app)
+    bcrypt.init_app(app)
+    jwt.init_app(app)
+    
+    # Enable CORS for all origins in development
+    cors.init_app(app, resources={
+        r"/*": {
+            "origins": "*",
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"]
+        }
+    })
+
+    with app.app_context():
+        db.create_all()
+
+    # Register blueprints
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(report_bp, url_prefix='/reports')
+    app.register_blueprint(claim_bp, url_prefix='/claims')
+    app.register_blueprint(stats_bp, url_prefix='/stats')  # New!
+    app.register_blueprint(sift_bp, url_prefix='/sift')
+
+    print("✅ App initialized successfully")
+    print(f"   Database: {Config.SQLALCHEMY_DATABASE_URI}")
+    print(f"   Registered blueprints: auth, reports, claims, stats, sift")
+
+    return app
+
+app = create_app()
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
+├── auth
+│   ├── decorators.py
+from functools import wraps
+from flask import request, jsonify
+import jwt
+from auth.token import decode_access_token
+from models import Admins
+from core.extensions import redis_client
+
+def auth_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get("Authorization")
+        
+        # identify if user is authenticated or not 
+        if not auth: 
+            return jsonify({
+                "error": "Not Authorized"
+            }), 401
+
+        
+        if not auth.startswith("Bearer "): 
+            return jsonify({
+                "error": "Invalid Authorization header"
+            }), 401
+        token = auth.replace("Bearer ", "")
+        
+        if redis_client.sismember("jwt_blacklist", token):
+            return jsonify({
+                "error": "Token has been revoked"
+            }), 401
+
+        try:
+            payload = decode_access_token(token)
+            if not payload: 
+                return jsonify({""
+                    "error": "Invalid or expired token"
+                }), 401
+            
+            admin_id = payload.get("sub")
+            
+            if not admin_id:
+                return jsonify({
+                    "error": "Admin not found"
+                }), 404
+            
+            current_user = Admins.query.get(admin_id)
+
+            if not current_user:
+                return jsonify({
+                    "error": "User not found"
+                }), 404
+            
+        except jwt.ExpiredSignatureError:
+            return jsonify({
+                "error": "Token has expired"
+            }), 401
+        
+        except jwt.InvalidTokenError:
+            return jsonify({
+                "error": "Invalid token"
+            }), 401
+        
+        return f(current_user, *args, **kwargs)
+    
+    return decorated
+
+# used for admin-only access routes and verify reports
+def admin_required(f):
+    @wraps(f)
+    def decorated(current_user, *args, **kwargs):
+        if current_user.role != "admin":
+            return jsonify({
+                "error": "Admin privileges required"
+            }), 403
+        
+        return f(current_user, *args, **kwargs)
+    
+    return decorated
+
+
+# route for superadmin-only access to manage admins
+# superadmin role is only for managing admins
+def superadmin_required(f):
+    @wraps(f)
+    def decorated(current_user, *args, **kwargs):
+        if current_user.role != "superadmin":
+            return jsonify({
+                "error": "Superadmin privileges required"
+            }), 403
+        
+        return f(current_user, *args, **kwargs)
+        
+    return decorated
+│   ├── routes.py
+from flask import Blueprint, request, jsonify
+from auth.services import register_admin, authenticate_admin
+from auth.decorators import auth_required
+from core.extensions import redis_client
+
+auth_bp = Blueprint('auth', __name__)
+
+@auth_bp.route('/admin-register', methods=['POST'])
+def admin_register():
+    data = request.get_json()
+    new_admin, error = register_admin(data)
+
+    if not new_admin:
+        return jsonify({"error": "Admin registration failed"}), 400
+    
+    # log_user_activity(new_admin.admin_id, "admin_register", "Admin registered successfully")
+
+    return jsonify({
+        "message": "Admin registered successfully",
+        "admin": {
+            "id": new_admin.admin_id,
+            "username": new_admin.username,
+            "email": new_admin.email
+        }
+    }), 201
+
+@auth_bp.route('/admin-login', methods=['POST'])
+def admin_login():
+    data = request.get_json()
+    admin, token = authenticate_admin(data['email'], data['password'])
+
+    if not admin:
+        return jsonify({"error": token}), 401
+    
+    # change_user_status(user.user_id, "active")
+    # log_user_activity(user.user_id, "login", "User logged in successfully")
+    
+    return jsonify({
+        "access_token": token,
+        "admin": {
+            "id": admin.admin_id,
+            "username": admin.username,
+            "role": admin.role,
+            "email": admin.email
+        }
+    }), 200
+
+@auth_bp.route('/admin-logout', methods=['POST'])
+@auth_required
+def logout(current_user):
+    # user, error = change_user_status(current_user.user_id, "deactivated")
+    # if error:
+    #     return jsonify({
+    #         "error": error
+    #     }), 400
+
+    # log_user_activity(current_user.user_id, "logout", "User logged out successfully")
+
+    token = request.headers.get("Authorization").replace("Bearer ", "")
+    redis_client.sadd("jwt_blacklist", token)
+    
+    return jsonify({
+        "message": "User logged out successfully"
+    }), 200
+│   ├── services.py
+from models.admins_model import Admins, db
+from flask_bcrypt import Bcrypt
+from auth.token import create_access_token
+
+bcrypt = Bcrypt()
+roles = "user"          # user - default, admin, superadmin
+
+# User registration and authentication functions
+# def register_user(data):
+#     if Users.query.filter_by(student_number=data['student_number']).first():
+#         return None, "Student number already registered"
+    
+#     hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+
+#     new_user = Users(
+#         student_number=data['student_number'],
+#         email=data.get('email'),
+#         password_hash=hashed_password,
+#         role=roles,
+#         contact_info=data['contact_info']
+#     )
+#     db.session.add(new_user)
+#     db.session.commit()
+
+#     return new_user, None
+
+# def authenticate_user(student_number, password):
+#     user = Users.query.filter_by(student_number=student_number).first()
+#     if not user:
+#         return None, "Invalid student number or password"
+    
+#     if not bcrypt.check_password_hash(user.password_hash, password):
+#         return None, "Invalid student number or password"
+    
+#     token = create_access_token(user.user_id, user.role)
+#     return user, token
+
+
+def register_admin(data):
+    roles = "admin"
+    if Admins.query.filter_by(username=data['username']).first():
+        return None, "Username already registered"
+    
+    hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+
+    new_admin = Admins(
+        username=data['username'],
+        password=hashed_password,
+        email=data.get('email'),
+        role=roles,
+    )
+    db.session.add(new_admin)
+    db.session.commit()
+
+    return new_admin, None
+
+
+def authenticate_admin(email, password):
+    admin = Admins.query.filter_by(email=email).first()
+    if not admin:
+        return None, "Invalid username or password"
+    
+    if not bcrypt.check_password_hash(admin.password, password): 
+        return None, "Invalid username or password"
+    
+    token = create_access_token(admin.admin_id, admin.role)
+    return admin, token
+
+
+# def change_user_status(user_id, new_status):
+#     user = Users.query.get(user_id)
+#     if not user:
+#         return None, "User not found"
+    
+#     user.status = new_status
+#     db.session.commit()
+#     return user, None
+
+# def log_user_activity(user_id, action, details):
+#     log_entry = UserLog(
+#         user_id=user_id,
+#         action=action,
+#         details=details
+#     )
+#     db.session.add(log_entry)
+#     db.session.commit()
+#     return log_entry
+│   └── token.py
+import jwt
+from datetime import datetime, timedelta, timezone
+from core.config import Config
+
+def create_access_token(user_id, role):
+    payload = {
+        "sub": str(user_id),
+        "role": role,
+        "type": "access",
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=Config.ACCESS_TOKEN_EXPIRES_MINUTES),
+        "iat": datetime.now(timezone.utc)
+    }
+    token = jwt.encode(payload, Config.JWT_SECRET_KEY, algorithm=Config.ALGORITHM)
+    return token
+
+def decode_access_token(token):
+    try:
+        payload = jwt.decode(token, Config.JWT_SECRET_KEY, algorithms=[Config.ALGORITHM])
+        print("[JWT] Decoded payload:", payload)        # debugging line shows the payload
+        return payload
+
+    except jwt.ExpiredSignatureError:
+        print("[JWT] Token has expired")
+        return None
+
+    except jwt.InvalidSignatureError:
+        print("[JWT] Invalid token signature")
+        return None
+
+    except jwt.DecodeError:
+        print("[JWT] Token decode error (maybe malformed)")
+        return None
+
+    except Exception as e:
+        print(f"[JWT] Unexpected error: {e}")
+        return None
+
+├── claims
+│   ├── routes.py
+from flask import Blueprint, request, jsonify
+from models.pending_claims_model import PendingClaims
+from models.reports_model import Reports
+from models.returns_model import Returns
+from core.extensions import db
+from datetime import datetime, timezone
+
+claim_bp = Blueprint('claims', __name__)
+
+@claim_bp.route('/submit-claim', methods=['POST'])
+def submit_claim():
+    """Submit a claim for a published item."""
+    try:
+        # Handle both JSON and FormData
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            data = request.form
+            image_file = request.files.get('proof_image')
+        else:
+            data = request.get_json() or {}
+            image_file = None
+        
+        report_id = data.get('report_id') or data.get('itemId')
+        student_name = data.get('claimantName') or data.get('student_name')
+        student_number = data.get('claimantId') or data.get('student_number')
+        contact_info = data.get('claimantEmail') or data.get('contact_info')
+        description = data.get('description')
+        
+        # Handle image upload
+        image_url = None
+        if image_file and image_file.filename:
+            temp_path = f"/tmp/claim_{datetime.now().timestamp()}_{image_file.filename}"
+            image_file.save(temp_path)
+            image_url = temp_path
+        
+        # Validate
+        if not all([report_id, student_name, student_number, contact_info, description]):
+            missing = []
+            if not report_id: missing.append('report_id')
+            if not student_name: missing.append('student_name')
+            if not student_number: missing.append('student_number')
+            if not contact_info: missing.append('contact_info')
+            if not description: missing.append('description')
+            return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+        
+        # Check if report exists and is published
+        report = Reports.query.get(int(report_id))
+        if not report:
+            return jsonify({"error": "Report not found"}), 404
+        
+        if not report.status.startswith('published'):
+            return jsonify({"error": "This item is not available for claiming"}), 400
+        
+        # Check if claim already exists for this report by this student
+        existing = PendingClaims.query.filter_by(
+            report_id=int(report_id),
+            student_number=student_number
+        ).first()
+        
+        if existing:
+            return jsonify({"error": "You have already submitted a claim for this item"}), 400
+        
+        # Create pending claim
+        new_claim = PendingClaims(
+            report_id=int(report_id),
+            student_name=student_name,
+            student_number=student_number,
+            contact_info=contact_info,
+            description=description,
+            status='pending',
+            image=image_url
+        )
+        
+        db.session.add(new_claim)
+        db.session.commit()
+        
+        return jsonify({
+            "message": "Claim submitted successfully",
+            "claim": new_claim.to_json()
+        }), 201
+        
+    except Exception as e:
+        import traceback
+        print(f"ERROR: {str(e)}")
+        print(f"TRACEBACK: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+
+@claim_bp.route('/pending-claims', methods=['GET'])
+def get_pending_claims():
+    """Get all pending claims for admin review."""
+    try:
+        claims = PendingClaims.query.filter_by(status='pending').order_by(PendingClaims.date_claimed.desc()).all()
+        
+        # Include report details
+        result = []
+        for claim in claims:
+            claim_data = claim.to_json()
+            report = Reports.query.get(claim.report_id)
+            if report:
+                claim_data['report'] = {
+                    'item_name': report.item_name,
+                    'description': report.description,
+                    'location': report.location,
+                    'image': report.image
+                }
+            result.append(claim_data)
+        
+        return jsonify({
+            "claims": result
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@claim_bp.route('/all-claims', methods=['GET'])
+def get_all_claims():
+    """Get all claims (for admin)."""
+    try:
+        claims = PendingClaims.query.order_by(PendingClaims.date_claimed.desc()).all()
+        return jsonify({
+            "claims": [claim.to_json() for claim in claims]
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@claim_bp.route('/review-claim/<int:claim_id>', methods=['POST'])
+def review_claim(claim_id):
+    """Approve or reject a claim."""
+    try:
+        data = request.get_json()
+        action = data.get('action')  # 'approve' or 'reject'
+        admin_id = data.get('admin_id', 1)  # Default admin ID
+        
+        claim = PendingClaims.query.get(claim_id)
+        if not claim:
+            return jsonify({"error": "Claim not found"}), 404
+        
+        if claim.status != 'pending':
+            return jsonify({"error": f"Claim is already {claim.status}"}), 400
+        
+        if action == 'approve':
+            claim.status = 'accepted'
+            
+            # Update report status to returned
+            report = Reports.query.get(claim.report_id)
+            if report:
+                report.status = 'returned'
+            
+            # Create return record
+            return_record = Returns(
+                admin_id=admin_id,
+                report_id=claim.report_id,
+                student_name=claim.student_name,
+                student_number=claim.student_number,
+                contact_info=claim.contact_info,
+                description=claim.description,
+                status='returned',
+                image=claim.image
+            )
+            db.session.add(return_record)
+            
+        elif action == 'reject':
+            claim.status = 'rejected'
+        else:
+            return jsonify({"error": "Invalid action. Use 'approve' or 'reject'"}), 400
+        
+        db.session.commit()
+        
+        return jsonify({
+            "message": f"Claim {action}d successfully",
+            "claim": claim.to_json()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        print(f"ERROR: {str(e)}")
+        print(f"TRACEBACK: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+
+@claim_bp.route('/claim/<int:claim_id>', methods=['GET'])
+def get_claim(claim_id):
+    """Get single claim by ID."""
+    try:
+        claim = PendingClaims.query.get(claim_id)
+        if not claim:
+            return jsonify({"error": "Claim not found"}), 404
+        
+        claim_data = claim.to_json()
+        report = Reports.query.get(claim.report_id)
+        if report:
+            claim_data['report'] = report.to_json()
+        
+        return jsonify({"claim": claim_data}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+│   └── services.py
+from models.pending_claims_model import PendingClaims
+from models.reports_model import Reports
+from core.extensions import db
+
+def get_claims_by_report(report_id):
+    """Get all claims for a specific report."""
+    claims = PendingClaims.query.filter_by(report_id=report_id).all()
+    return [claim.to_json() for claim in claims]
+
+def get_claims_by_student(student_number):
+    """Get all claims by a specific student."""
+    claims = PendingClaims.query.filter_by(student_number=student_number).all()
+    return [claim.to_json() for claim in claims]
+
+def check_existing_claim(report_id, student_number):
+    """Check if student already claimed this report."""
+    existing = PendingClaims.query.filter_by(
+        report_id=report_id,
+        student_number=student_number
+    ).first()
+    return existing is not None
+├── core
+│   ├── config.py
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class Config:
+    DB_USER = os.getenv("DB_USER")
+    DB_PASSWORD = os.getenv("DB_PASSWORD")
+    DB_HOST = os.getenv("DB_HOST")
+    DB_PORT = os.getenv("DB_PORT")
+    DB_NAME = os.getenv("DB_NAME")
+
+    SQLALCHEMY_DATABASE_URI = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:5000")
+
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
+    ALGORITHM = os.getenv('ALGORITHM')
+    ACCESS_TOKEN_EXPIRES_MINUTES = int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES_MINUTES', 30))
+
+    SESSION_TYPE = os.getenv('SESSION_TYPE', 'redis')
+    SESSION_PERMANENT = False
+    SESSION_USE_SIGNER = True
+    SESSION_REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+
+    SESSION_REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
+    SESSION_REDIS_DB = int(os.getenv('REDIS_DB', 0))
+
+    GDRIVE_URL = os.getenv('GDRIVE_URL')
+
+
+│   ├── extensions.py
+from flask_sqlalchemy import SQLAlchemy
+from flask_bcrypt import Bcrypt
+from flask_jwt_extended import JWTManager
+from flask_cors import CORS
+from flask_session import Session
+import redis
+from core.config import Config
+
+db = SQLAlchemy()
+bcrypt = Bcrypt()
+jwt = JWTManager()
+cors = CORS()
+session = Session()
+
+redis_client = redis.Redis(host=Config.SESSION_REDIS_HOST, port=Config.SESSION_REDIS_PORT, db=Config.SESSION_REDIS_DB)
+├── models
+│   ├── admins_model.py
+from core.extensions import db
+from datetime import datetime, timezone
+
+class Admins(db.Model):
+    __tablename__ = 'admins'
+
+    admin_id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(100), nullable=False)      # name of the admin
+    password = db.Column(db.String(255), nullable=False)     # password of the admin
+    email = db.Column(db.String(100), nullable=False)        # email of the admin
+    role = db.Column(db.String(20), nullable=False)         # role of the admin (admin or superadmin)
+    date_created = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)  # date when the admin account was created
+    date_updated = db.Column(db.DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc), nullable=False)  # date when the admin account was last updated
+
+    returns = db.relationship("Returns", back_populates="admin", lazy="select")
+
+    print("Admins model loaded")
+
+    def to_json(self):
+        return {
+            'admin_id': self.admin_id,
+            'username': self.username,
+            'email': self.email,
+            'role': self.role,
+            'date_created': self.date_created.isoformat(),
+            'date_updated': self.date_updated.isoformat()
+        }
+│   ├── __init__.py
+from .reports_model import Reports
+from .pending_claims_model import PendingClaims
+from .admins_model import Admins
+from .returns_model import Returns
+│   ├── pending_claims_model.py
+from core.extensions import db
+from datetime import datetime, timezone
+
+class PendingClaims(db.Model):
+    __tablename__ = 'pending_claims'
+
+    claim_id = db.Column(db.Integer, primary_key=True)
+    report_id = db.Column(db.Integer, db.ForeignKey('reports.report_id'), nullable=False)
+    student_name = db.Column(db.String(100), nullable=True)
+    student_number = db.Column(db.String(20), nullable=True)
+    contact_info = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=False)  # Proof of ownership description
+    status = db.Column(db.String(20), nullable=False, default='pending')  # pending, accepted, rejected
+    image = db.Column(db.String(255), nullable=True)  # Proof image
+    date_claimed = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)
+
+    report = db.relationship("Reports", back_populates="pending_claim", lazy="select")
+
+    def to_json(self):
+        return {
+            'claim_id': self.claim_id,
+            'report_id': self.report_id,
+            'student_name': self.student_name,
+            'student_number': self.student_number,
+            'contact_info': self.contact_info,
+            'description': self.description,
+            'status': self.status,
+            'image': self.image,
+            'date_claimed': self.date_claimed.isoformat()
+        }
+│   ├── reports_model.py
+from core.extensions import db
+from datetime import datetime, timezone
+
+class Reports(db.Model):
+    __tablename__ = 'reports'
+
+    report_id = db.Column(db.Integer, primary_key=True)
+    item_name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), nullable=False)  # lost, found, published_lost, published_found, returned
+    location = db.Column(db.String(100), nullable=False)
+    date_reported = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)
+    time = db.Column(db.Time, nullable=True)
+    image = db.Column(db.String(255), nullable=True)
+    category = db.Column(db.String(50), nullable=True)  # Electronics, Accessories, Bags, Books, Stationery
+    
+    pending_claim = db.relationship("PendingClaims", back_populates="report", lazy="select")
+    returns = db.relationship("Returns", back_populates="report", lazy="select")
+
+    def to_json(self):
+        return {
+            'report_id': self.report_id,
+            'item_name': self.item_name,
+            'description': self.description,
+            'status': self.status,
+            'location': self.location,
+            'date_reported': self.date_reported.isoformat(),
+            'time': self.time.isoformat() if self.time else None,
+            'image': self.image,
+            'category': self.category
+        }
+│   └── returns_model.py
+from core.extensions import db
+from datetime import datetime, timezone
+
+class Returns(db.Model):
+    __tablename__ = 'returns'
+
+    return_id = db.Column(db.Integer, primary_key=True)
+    admin_id = db.Column(db.Integer, db.ForeignKey('admins.admin_id'), nullable=False)  # foreign key to the admin who verified the return
+    report_id = db.Column(db.Integer, db.ForeignKey('reports.report_id'), nullable=False)  # foreign key to the report being returned
+    student_name = db.Column(db.String(100), nullable=False)      # name of the student returning the item
+    student_number = db.Column(db.String(20), nullable=False)     # student number of the claimant
+    contact_info = db.Column(db.String(100), nullable=False)     # contact information of the claimant
+    description = db.Column(db.Text, nullable=False)            # description or instruction of the return
+    status = db.Column(db.String(20), nullable=False, default='pending')  # status of the return (pending, returned)
+    image = db.Column(db.String(255), nullable=True)            # image of the return
+    date_returned = db.Column(db.DateTime, default=datetime.now(timezone.utc), nullable=False)  # date when the return was made
+
+    report = db.relationship("Reports", back_populates="returns", lazy="select")
+    admin = db.relationship("Admins", back_populates="returns", lazy="select")
+
+    print("Returns model loaded")
+    
+    def to_json(self):
+        return {
+            'return_id': self.return_id,
+            'admin_id': self.admin_id,
+            'report_id': self.report_id,
+            'student_name': self.student_name,
+            'student_number': self.student_number,
+            'contact_info': self.contact_info,
+            'description': self.description,
+            'status': self.status,
+            'image': self.image,
+            'date_returned': self.date_returned.isoformat()
+        }
+├── reports
+│   ├── routes.py
+from flask import Blueprint, request, jsonify, send_file
+from reports.services import (
+    submit_report, 
+    get_all_reports, 
+    get_claimable_reports,
+    publish_report_to_claims,
+    delete_report,
+    get_report_by_id,
+    update_report_status,
+    process_report_with_image_url
+)
+from auth.decorators import auth_required, admin_required
+import os
+
+report_bp = Blueprint('reports', __name__)
+
+@report_bp.route('/report-item', methods=['POST'])
+def report_item():
+    try:
+        print(f"Content-Type: {request.content_type}")
+        
+        # Get form data
+        item_name = request.form.get('item_name')
+        description = request.form.get('description')
+        status = request.form.get('status')
+        location = request.form.get('location')
+        date = request.form.get('date')
+        time = request.form.get('time')
+        category = request.form.get('category', 'Uncategorized')
+        
+        # Get optional personal info
+        student_name = request.form.get('student_name')
+        student_number = request.form.get('student_number')
+        contact_info = request.form.get('contact_info')
+        
+        # Handle image file upload
+        image_file = request.files.get('image')
+        image_url = None
+        
+        if image_file and image_file.filename:
+            # Save to temp location
+            temp_path = f"/tmp/{image_file.filename}"
+            image_file.save(temp_path)
+            image_url = temp_path
+        
+        # Create report data dict
+        data = {
+            'item_name': item_name,
+            'description': description,
+            'status': status,
+            'location': location,
+            'date': date,
+            'time': time,
+            'category': category,
+            'image': image_url,
+            'student_name': student_name,
+            'student_number': student_number,
+            'contact_info': contact_info
+        }
+
+        # Validate required fields
+        if not all([item_name, description, status, location, date]):
+            return jsonify({"error": "Missing required fields"}), 400
+        
+        # Create the report
+        new_report = submit_report(data)
+
+        # Process based on status
+        if status == 'lost' and image_url:
+            # Process image to find matches
+            new_claim, message, process_result = process_report_with_image_url(
+                image_url, data, new_report
+            )
+            
+            if process_result == "Approved":
+                return jsonify({
+                    "message": message,
+                    "report": new_report.to_json(),
+                    "new_pending_claim": new_claim.to_json()
+                }), 201
+            elif process_result == "Incomplete Data":
+                return jsonify({
+                    "missing_fields": "Missing",
+                    "message": message,
+                    "report": new_report.to_json()
+                }), 201
+            else:
+                return jsonify({
+                    "message": message,
+                    "report": new_report.to_json(),
+                    "match_result": process_result
+                }), 201
+
+        return jsonify({
+            "message": "Report submitted successfully",
+            "report": new_report.to_json()  
+        }), 201 
+    
+    except Exception as e:
+        import traceback
+        print(f"ERROR: {str(e)}")
+        print(f"TRACEBACK: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+
+@report_bp.route('/all-reports', methods=['GET'])
+# @auth_required  # Uncomment to require auth
+# @admin_required  # Uncomment to require admin
+def report_status():
+    """Get all reports for admin dashboard."""
+    data = get_all_reports()
+    return jsonify(data), 200
+
+
+@report_bp.route('/claimable-reports', methods=['GET'])
+def claimable_reports():
+    """Get published reports for public claim page."""
+    data = get_claimable_reports()
+    return jsonify(data), 200
+
+
+@report_bp.route('/report/<int:report_id>', methods=['GET'])
+def get_report(report_id):
+    """Get single report by ID."""
+    report = get_report_by_id(report_id)
+    if not report:
+        return jsonify({"error": "Report not found"}), 404
+    return jsonify({"report": report}), 200
+
+
+@report_bp.route('/publish-report', methods=['POST'])
+# @auth_required  # Uncomment to require auth
+# @admin_required  # Uncomment to require admin
+def publish_report():
+    """Publish a report to make it visible in claim page."""
+    data = request.get_json()
+    report_id = data.get('report_id')
+    
+    if not report_id:
+        return jsonify({"error": "Missing report_id"}), 400
+    
+    report, error = publish_report_to_claims(report_id)
+    
+    if error:
+        return jsonify({"error": error}), 400
+    
+    return jsonify({
+        "message": "Report published successfully",
+        "report": report.to_json()
+    }), 200
+
+
+@report_bp.route('/update-report/<int:report_id>', methods=['PUT'])
+def update_report(report_id):
+    """Update report status."""
+    data = request.get_json()
+    new_status = data.get('status')
+    
+    if not new_status:
+        return jsonify({"error": "Missing status"}), 400
+    
+    report, error = update_report_status(report_id, new_status)
+    
+    if error:
+        return jsonify({"error": error}), 404
+    
+    return jsonify({
+        "message": "Report updated successfully",
+        "report": report.to_json()
+    }), 200
+
+
+@report_bp.route('/delete-report/<int:report_id>', methods=['DELETE'])
+# @auth_required  # Uncomment to require auth
+# @admin_required  # Uncomment to require admin
+def delete_report_route(report_id):
+    """Delete a report (admin rejection)."""
+    report, error = delete_report(report_id)
+    
+    if error:
+        return jsonify({"error": error}), 404
+    
+    return jsonify({
+        "message": "Report deleted successfully",
+        "report_id": report_id
+    }), 200
+
+
+@report_bp.route('/images/<path:image_path>', methods=['GET'])
+def get_image(image_path):
+    """Serve report images."""
+    try:
+        # Security: prevent directory traversal
+        safe_path = os.path.normpath(image_path)
+        if '..' in safe_path or safe_path.startswith('/'):
+            return jsonify({"error": "Invalid path"}), 400
+        
+        # Check multiple possible locations
+        possible_paths = [
+            os.path.join('/tmp', safe_path),
+            os.path.join('/tmp', os.path.basename(safe_path)),
+            safe_path if os.path.exists(safe_path) else None
+        ]
+        
+        full_path = None
+        for path in possible_paths:
+            if path and os.path.exists(path):
+                full_path = path
+                break
+        
+        if not full_path:
+            return jsonify({"error": "Image not found"}), 404
+        
+        # Determine mimetype
+        mimetype = 'image/jpeg'
+        if full_path.endswith('.png'):
+            mimetype = 'image/png'
+        elif full_path.endswith('.gif'):
+            mimetype = 'image/gif'
+        
+        return send_file(full_path, mimetype=mimetype)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+│   └── services.py
+from models.reports_model import Reports, db
+from models.pending_claims_model import PendingClaims
+from sift.services import process_image
+from datetime import datetime, timezone
+
+def submit_report(data, image_url=None):
+    """Create a new report."""
+    new_report = Reports(
+        item_name=data.get('item_name'),
+        description=data.get('description'),
+        status=data.get('status'),
+        location=data.get('location'),
+        time=data.get('time') or None,
+        image=image_url,
+        category=data.get('category', 'Uncategorized'),
+        date_reported=datetime.now(timezone.utc)
+    )
+    
+    db.session.add(new_report)
+    db.session.commit()
+    
+    return new_report
+
+def get_all_reports():
+    """Get all reports for admin dashboard."""
+    all_reports = Reports.query.order_by(Reports.date_reported.desc()).all()
+    return {
+        "reports": [report.to_json() for report in all_reports]
+    }
+
+def get_claimable_reports():
+    """Get published reports for public claim page."""
+    claimable_reports = Reports.query.filter(
+        Reports.status.in_(['published_lost', 'published_found'])
+    ).order_by(Reports.date_reported.desc()).all()
+
+    mapped_reports = []
+    for report in claimable_reports:
+        payload = report.to_json()
+        # Normalize status for frontend
+        status = (report.status or '').strip().lower()
+        if status == 'published_lost':
+            payload['status'] = 'lost'
+        else:
+            payload['status'] = 'found'
+        mapped_reports.append(payload)
+
+    return {
+        "reports": mapped_reports
+    }
+
+def publish_report_to_claims(report_id):
+    """Publish a report to make it visible in claim page."""
+    report = Reports.query.filter_by(report_id=report_id).first()
+
+    if not report:
+        return None, "Report not found"
+
+    # Already published
+    if report.status in ('published_lost', 'published_found'):
+        return report, None
+
+    # Convert status to published version
+    current_status = (report.status or '').strip().lower()
+    if current_status == 'lost':
+        report.status = 'published_lost'
+    elif current_status == 'found':
+        report.status = 'published_found'
+    else:
+        # Default to published_found if status is unclear
+        report.status = 'published_found'
+
+    db.session.commit()
+    return report, None
+
+def delete_report(report_id):
+    """Delete a report (reject action)."""
+    report = Reports.query.filter_by(report_id=report_id).first()
+    
+    if not report:
+        return None, "Report not found"
+    
+    # Also delete any associated pending claims
+    PendingClaims.query.filter_by(report_id=report_id).delete()
+    
+    db.session.delete(report)
+    db.session.commit()
+    return report, None
+
+def get_report_by_id(report_id):
+    """Get single report by ID."""
+    report = Reports.query.get(report_id)
+    if not report:
+        return None
+    return report.to_json()
+
+def update_report_status(report_id, new_status):
+    """Update report status."""
+    report = Reports.query.get(report_id)
+    if not report:
+        return None, "Report not found"
+    
+    report.status = new_status
+    db.session.commit()
+    return report, None
+
+def process_report_with_image_url(image_url, data, new_report):
+    """
+    Process lost item report image and create pending claim if match found.
+    """
+    result = process_image(image_url)
+
+    if not result:
+        return None, "Image processing failed", "Error"
+
+    if not result.get('success'):
+        return None, "No match found in database. Report recorded for manual review.", "No Match"
+    
+    student_name = data.get('student_name')
+    student_number = data.get('student_number')
+    contact_info = data.get('contact_info')
+
+    if not student_name or not student_number or not contact_info:
+        return None, "Match found but missing required claim information", "Incomplete Data"
+
+    matched_name = result.get("matched_image", {}).get("name")
+    matched_source = result.get("matched_image", {}).get("source_url")
+    matched_gdrive_id = result.get("matched_image", {}).get("gdrive_file_id")
+    match_score = result.get("matched_image", {}).get("match_score", 0)
+
+    print(f"Match found: {matched_name} (Score: {match_score})")
+    print(f"Matched image source: {matched_source}")
+
+    report_id = new_report.report_id
+
+    try:
+        new_claim = PendingClaims(
+            report_id=report_id,
+            student_name=data.get('student_name'),
+            student_number=data.get('student_number'),
+            contact_info=data.get('contact_info'),
+            description=data.get('description', ''),
+            status='pending',
+            image=matched_source or matched_gdrive_id or image_url
+        )
+        db.session.add(new_claim)
+        db.session.commit()
+        
+        return new_claim, f"Match found ({matched_name}). Pending claim created.", "Approved"
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Database error creating claim: {e}")
+        return None, "Match found but failed to create claim", "Database Error"
+├── sift
+│   ├── algorithm.py
+"""
+How to use?
+First before running the server, you need to run first the algorithm.py to authenticate your Google Drive account and create the token.pickle file. This will allow the server to access your Google Drive for training and saving results.
+Run the following command in your terminal:
+python server/sift/algorithm.py --mode train_gdrive --source 'https://drive.google.com/drive/folders/1L67SDe_Tw0riFXWE_remlt0w0qfW-WGH'
+This will authenticate your Google Drive account and create the token.pickle file in the server/sift/res/ directory. You only need to do this once. After that, you can start the server and it will use the saved token to access your Google Drive for training and saving results without needing to authenticate again.
+"""
+
+
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import pickle
+import os
+import argparse
+import requests
+import re
+import time
+import io
+from io import BytesIO
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+
+# Threshold 
+MIN_MATCH_COUNT = 30
+
+# Setup paths - works regardless of where script is called from
+MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+RES_DIR = os.path.join(MODULE_DIR, 'res')
+
+# Ensure res directory exists
+os.makedirs(RES_DIR, exist_ok=True)
+os.makedirs(os.path.join(RES_DIR, 'train'), exist_ok=True)
+
+# File paths
+GDRIVE_CREDENTIALS = os.path.join(RES_DIR, "client_secret.json")
+TOKEN_FILE = os.path.join(RES_DIR, "token.pickle")
+DB_FILE = os.path.join(RES_DIR, "sift_database.pkl")
+IMAGE_DIR = os.path.join(RES_DIR, "train")
+
+# Debug output (remove after testing)
+print(f"SIFT module directory: {MODULE_DIR}")
+print(f"Resources directory: {RES_DIR}")
+print(f"Credentials file: {GDRIVE_CREDENTIALS}")
+print(f"   Credentials exist: {os.path.exists(GDRIVE_CREDENTIALS)}")
+print(f"Token file: {TOKEN_FILE}")
+print(f"   Token exists: {os.path.exists(TOKEN_FILE)}")
+
+# Use FULL ACCESS scope for everything (so token is consistent)
+SCOPES = ['https://www.googleapis.com/auth/drive']
+
+# Initiate SIFT detector
+try:
+    sift = cv2.SIFT_create()
+except:
+    sift = cv2.xfeatures2d.SIFT_create()
+
+# Create the Flann Matcher object
+FLANN_INDEX_KDITREE = 0
+flannParam = dict(algorithm=FLANN_INDEX_KDITREE, tree=5)
+flann = cv2.FlannBasedMatcher(flannParam, {})
+
+
+def get_drive_service():
+    """
+    Authenticate using OAuth (user account) - reuses saved token if available
+    """
+    creds = None
+    
+    # Load existing token
+    if os.path.exists(TOKEN_FILE):
+        try:
+            with open(TOKEN_FILE, 'rb') as token:
+                creds = pickle.load(token)
+            print(f"Key: Loaded saved credentials")
+        except Exception as e:
+            print(f"Error: Could not load token: {e}")
+            creds = None
+    
+    # If no valid credentials, get new ones
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            print("Refreshing expired token...")
+            creds.refresh(Request())
+            print("Ok: Token refreshed!")
+        else:
+            if not os.path.exists(GDRIVE_CREDENTIALS):
+                raise FileNotFoundError(
+                    f"Credentials not found at: {GDRIVE_CREDENTIALS}\n"
+                    f"   Current directory: {os.getcwd()}\n"
+                    f"   Expected: {GDRIVE_CREDENTIALS}\n"
+                    "   Please ensure client_secret.json is in sift/res/ folder"
+                )
+            
+            print("Opening browser for Google authentication...")
+            print("   (This will only happen once)")
+            flow = InstalledAppFlow.from_client_secrets_file(
+                GDRIVE_CREDENTIALS,
+                scopes=SCOPES
+            )
+            creds = flow.run_local_server(port=0)
+            print("Ok: Authentication successful!")
+        
+        # Save token for future runs
+        with open(TOKEN_FILE, 'wb') as token:
+            pickle.dump(creds, token)
+            print(f"Credentials saved")
+    else:
+        print("Ok: Using existing valid credentials")
+    
+    return build('drive', 'v3', credentials=creds)
+
+
+def extract_gdrive_file_id(url):
+    """
+    Extract Google Drive file ID from various URL formats
+    """
+    if not url or not isinstance(url, str):
+        return None
+    
+    # Pattern 1: https://drive.google.com/file/d/FILE_ID/view 
+    pattern1 = r'/file/d/([a-zA-Z0-9_-]+)'
+    match = re.search(pattern1, url)
+    if match:
+        return match.group(1)
+    
+    # Pattern 2: https://drive.google.com/open?id=FILE_ID 
+    pattern2 = r'[?&]id=([a-zA-Z0-9_-]+)'
+    match = re.search(pattern2, url)
+    if match:
+        return match.group(1)
+    
+    # Pattern 3: https://drive.google.com/uc?id=FILE_ID 
+    pattern3 = r'uc\?.*?id=([a-zA-Z0-9_-]+)'
+    match = re.search(pattern3, url)
+    if match:
+        return match.group(1)
+    
+    # If it's just the ID itself (no URL)
+    if re.match(r'^[a-zA-Z0-9_-]{20,}$', url):
+        return url
+    
+    return None
+
+
+def extract_folder_id(folder_url):
+    """Extract folder ID from various Google Drive URL formats"""
+    if '/folders/' in folder_url:
+        return folder_url.split('/folders/')[1].split('?')[0].split('/')[0]
+    elif 'id=' in folder_url:
+        return folder_url.split('id=')[1].split('&')[0]
+    return folder_url  # Assume it's already an ID
+
+
+def list_images_in_folder(service, folder_id):
+    """List all image files in a Google Drive folder"""
+    query = (f"'{folder_id}' in parents and "
+             f"(mimeType contains 'image/jpeg' or mimeType contains 'image/png') "
+             f"and trashed=false")
+    
+    results = service.files().list(
+        q=query,
+        fields="files(id, name, mimeType, size)",
+        pageSize=1000
+    ).execute()
+    
+    return results.get('files', [])
+
+
+def download_image_from_drive(service, file_id):
+    """Download image from Drive and return as OpenCV image (numpy array)"""
+    try:
+        request = service.files().get_media(fileId=file_id)
+        fh = BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        
+        fh.seek(0)
+        img_array = np.frombuffer(fh.read(), np.uint8)
+        img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+        return img
+    except Exception as e:
+        print(f"Error: Failed to download image {file_id}: {e}")
+        return None
+
+
+def load_image_from_source(source):
+    """
+    Load image from local path, URL, or Google Drive sharing link
+    Returns: (image_array, source_type)
+    """
+    if not source:
+        raise ValueError("No source provided")
+    
+    print(f"Loading from: {source[:80]}...")
+    
+    # Check if it's a Google Drive URL
+    gdrive_file_id = extract_gdrive_file_id(source)
+    
+    if gdrive_file_id and 'drive.google.com' in source:
+        print(f"Detected Google Drive file ID: {gdrive_file_id}")
+        
+        # Method 1: Try direct download URL first (fastest, no API needed)
+        direct_url = f"https://drive.google.com/uc?export=download&id={gdrive_file_id}"
+        print(f"Trying direct download...")
+        
+        try:
+            # Use session to handle redirects
+            session = requests.Session()
+            response = session.get(direct_url, timeout=30, allow_redirects=True)
+            
+            # Check if we got a confirmation page (large file warning)
+            if 'confirm' in response.url or 'downloadWarning' in response.text:
+                # Extract confirm token
+                for key, value in response.cookies.items():
+                    if 'download' in key.lower():
+                        confirm_url = f"{direct_url}&confirm={value}"
+                        response = session.get(confirm_url, timeout=30)
+                        break
+            
+            response.raise_for_status()
+            
+            # Check if we got HTML instead of image
+            if 'text/html' in response.headers.get('content-type', ''):
+                raise Exception("Got HTML page instead of image (file may be too large or private)")
+            
+            img_array = np.frombuffer(response.content, np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+            
+            if img is not None:
+                print(f"Success: Successfully loaded via direct download")
+                return img, 'gdrive_direct'
+            else:
+                raise Exception("Could not decode image")
+                
+        except Exception as e:
+            print(f"Error: Direct download failed: {e}")
+            
+            # Method 2: Try Google Drive API if credentials exist
+            if os.path.exists(GDRIVE_CREDENTIALS):
+                print(f"Secured: Trying Google Drive API...")
+                try:
+                    service = get_drive_service()  # Uses saved token!
+                    img = download_image_from_drive(service, gdrive_file_id)
+                    if img is not None:
+                        print(f"Success: Successfully loaded via Drive API")
+                        return img, 'gdrive_api'
+                except Exception as api_e:
+                    print(f"Error: Drive API failed: {api_e}")
+    
+    # Handle regular HTTP/HTTPS URLs
+    if source.startswith(('http://', 'https://')):
+        print(f"Downloading from URL...")
+        try:
+            response = requests.get(source, timeout=30)
+            response.raise_for_status()
+            img_array = np.frombuffer(response.content, np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+            if img is not None:
+                print(f"Success: Successfully loaded from URL")
+                return img, 'url'
+            else:
+                raise Exception("Could not decode image from URL")
+        except Exception as e:
+            raise Exception(f"Failed to download from URL: {e}")
+    
+    # Handle local files
+    print(f"Folder: Loading local file...")
+    img = cv2.imread(source, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise FileNotFoundError(f"Could not load local image: {source}")
+    print(f"Success: Successfully loaded local file")
+    return img, 'local'
+
+
+def load_database():
+    """Load existing database - FIXED for empty/corrupted files"""
+    if os.path.exists(DB_FILE):
+        try:
+            # Check file size first
+            if os.path.getsize(DB_FILE) == 0:
+                print(f"Error: {DB_FILE} is empty - starting fresh")
+                return []
+            
+            with open(DB_FILE, 'rb') as f:
+                db = pickle.load(f)
+                print(f"Success: Loaded database: {len(db)} objects")
+                return db
+        except (EOFError, pickle.UnpicklingError) as e:
+            print(f"Error: Corrupted database {DB_FILE}: {e}")
+            print("Restart: Starting fresh database")
+            return []
+    return []
+
+
+def extract_and_save_features_enhanced(img_source, img_name, database, 
+                                        source_url=None, gdrive_file_id=None,
+                                        is_frame=False, is_array=False):
+    """
+    Extract SIFT features and save to database with source metadata
+    img_source: can be file path, frame, or numpy array
+    source_url: original URL or path of the image
+    gdrive_file_id: Google Drive file ID if applicable
+    """
+    try:
+        if is_frame or is_array:
+            if len(img_source.shape) == 3:
+                gray = cv2.cvtColor(img_source, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = img_source
+        elif isinstance(img_source, str):
+            gray = cv2.imread(img_source, cv2.IMREAD_GRAYSCALE)
+            # If no source_url provided for local file, use the path
+            if source_url is None:
+                source_url = img_source
+        else:
+            return False
+        
+        if gray is None:
+            print(f"Error: Could not load image: {img_name}")
+            return False
+        
+        kp, desc = sift.detectAndCompute(gray, None)
+        
+        if desc is not None and len(desc) > 0:
+            # Store as dictionary with metadata
+            entry = {
+                'name': img_name,
+                'descriptors': desc,
+                'source_url': source_url,           # Original URL/path
+                'gdrive_file_id': gdrive_file_id,  # GDrive ID if applicable
+                'source_type': 'unknown'
+            }
+            
+            # Determine source type
+            if gdrive_file_id:
+                entry['source_type'] = 'gdrive'
+                # Generate view link if we have the file ID
+                entry['gdrive_view_link'] = f"https://drive.google.com/file/d/{gdrive_file_id}/view"
+            elif source_url and source_url.startswith(('http://', 'https://')):
+                entry['source_type'] = 'url'
+            else:
+                entry['source_type'] = 'local'
+            
+            database.append(entry)
+            print(f"Success: SAVED '{img_name}' to database ({len(desc)} descriptors)")
+            if source_url and len(source_url) > 60:
+                print(f"   Source: {source_url[:60]}...")
+            else:
+                print(f"   Source: {source_url}")
+            return True
+        else:
+            print(f"Error: No features found in {img_name}")
+            return False
+            
+    except Exception as e:
+        print(f"Wrong Syntax: Error processing {img_name}: {e}")
+        return False
+
+
+def build_database_from_files(train_dir=IMAGE_DIR):
+    """
+    Build database from local image files in folder
+    """
+    database = []
+    if not os.path.exists(train_dir):
+        os.makedirs(train_dir)
+        print(f"Folder: Created {train_dir}. Add .jpg/.png files there.")
+        return database
+    
+    image_files = [f for f in os.listdir(train_dir) 
+                   if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp', '.tiff'))]
+    
+    if not image_files:
+        print(f"Error: No images found in {train_dir}")
+        return database
+    
+    print(f"Photo: Found {len(image_files)} images in local folder")
+    
+    for img_file in image_files:
+        img_path = os.path.join(train_dir, img_file)
+        # For local files, store the full path as source_url
+        extract_and_save_features_enhanced(
+            img_path, 
+            img_file, 
+            database,
+            source_url=img_path,  # Store local path
+            is_frame=False,
+            is_array=False
+        )
+    
+    # Save database
+    if database:
+        with open(DB_FILE, 'wb') as f:
+            pickle.dump(database, f)
+        print(f"Database saved: {DB_FILE} ({len(database)} images)")
+    
+    return database
+
+
+def build_database_from_gdrive(folder_url):
+    """
+    Build database directly from Google Drive folder (stores GDrive IDs)
+    """
+    database = []
+    
+    try:
+        print("Secured: Authenticating with Google Drive...")
+        service = get_drive_service()
+        
+        folder_id = extract_folder_id(folder_url)
+        print(f"Folder ID: {folder_id}")
+        
+        print("Listing images in folder...")
+        images = list_images_in_folder(service, folder_id)
+        
+        if not images:
+            print("Error: No images found in folder.")
+            return database
+        
+        print(f"Photo: Found {len(images)} images in Google Drive folder")
+        
+        for idx, img_file in enumerate(images, 1):
+            print(f"\n[{idx}/{len(images)}] Processing: {img_file['name']}")
+            
+            # Download image to memory
+            img = download_image_from_drive(service, img_file['id'])
+            
+            if img is not None:
+                # Pass the GDrive file ID and construct view link
+                gdrive_link = f"https://drive.google.com/file/d/{img_file['id']}/view"
+                
+                extract_and_save_features_enhanced(
+                    img, 
+                    img_file['name'], 
+                    database,
+                    source_url=gdrive_link,      # Store the GDrive link as source
+                    gdrive_file_id=img_file['id'],  # Store the file ID
+                    is_array=True
+                )
+        
+        # Save database locally
+        if database:
+            with open(DB_FILE, 'wb') as f:
+                pickle.dump(database, f)
+            print(f"\nDatabase saved: {DB_FILE} ({len(database)} images)")
+        
+    except Exception as e:
+        print(f"Wrong Syntax: Google Drive error: {e}")
+    
+    return database
+
+
+def build_database_from_url(image_url):
+    """
+    Build database from a single image URL (http/https)
+    """
+    database = []
+    
+    try:
+        img, source_type = load_image_from_source(image_url)
+        
+        if img is not None:
+            img_name = os.path.basename(image_url.split('?')[0]) or "url_image.jpg"
+            
+            # Determine if it's a GDrive URL and extract ID
+            gdrive_id = None
+            if 'drive.google.com' in image_url:
+                gdrive_id = extract_gdrive_file_id(image_url)
+            
+            if extract_and_save_features_enhanced(
+                img, 
+                img_name, 
+                database,
+                source_url=image_url,
+                gdrive_file_id=gdrive_id,
+                is_array=True
+            ):
+                # Save single image database
+                with open(DB_FILE, 'wb') as f:
+                    pickle.dump(database, f)
+                print(f"Database saved: {DB_FILE}")
+        else:
+            print("Wrong Syntax: Could not decode image from URL")
+            
+    except Exception as e:
+        print(f"Wrong Syntax: Error: {e}")
+
+
+def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True):
+    """
+    Save OpenCV image array to Google Drive folder
+    """
+    try:
+        # Add timestamp to filename
+        if add_timestamp:
+            name, ext = os.path.splitext(filename)
+            timestamp = int(time.time())
+            filename = f"{name}_{timestamp}{ext}"
+        
+        if not filename.endswith(('.jpg', '.jpeg', '.png')):
+            filename += '.jpg'
+        
+        # Encode image
+        success, img_encoded = cv2.imencode('.jpg', image_array)
+        if not success:
+            raise Exception("Failed to encode image")
+        
+        img_bytes = io.BytesIO(img_encoded.tobytes())
+        
+        # Use saved credentials (same as training!)
+        service = get_drive_service()
+        
+        file_metadata = {
+            'name': filename,
+            'parents': [folder_id]
+        }
+        
+        media = MediaIoBaseUpload(img_bytes, mimetype='image/jpeg', resumable=True)
+        
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, name, webViewLink, mimeType'
+        ).execute()
+        
+        print(f"Success: Uploaded: {file.get('name')} (ID: {file.get('id')})")
+        
+        return {
+            'success': True,
+            'id': file.get('id'),
+            'name': file.get('name'),
+            'view_link': file.get('webViewLink'),
+            'mime_type': file.get('mimeType')
+        }
+        
+    except Exception as e:
+        print(f"Wrong Syntax: Upload failed: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def detect_from_database(test_img_source, database, output_gdrive_folder_id=None):
+    """
+    Detect/match test image against trained database
+    Returns enhanced result with both query and matched image info
+    """
+    result = {
+        'success': False,
+        'best_match': None,
+        'match_score': 0,
+        'all_matches': [],
+        'saved_to_gdrive': False,
+        'gdrive_file_id': None,
+        'gdrive_view_link': None,
+        # Query image info
+        'query_image': {
+            'original_source': test_img_source,
+            'source_type': None,
+            'saved_to_gdrive': False,
+            'gdrive_file_id': None,
+            'gdrive_view_link': None
+        },
+        # Matched image info
+        'matched_image': {
+            'name': None,
+            'source_url': None,
+            'source_type': None,
+            'gdrive_file_id': None,
+            'gdrive_view_link': None
+        },
+        'error': None
+    }
+    
+    try:
+        test_gray, source_type = load_image_from_source(test_img_source)
+        result['query_image']['source_type'] = source_type
+    except Exception as e:
+        error_msg = f"Could not load test image: {e}"
+        print(f"Wrong Syntax: {error_msg}")
+        result['error'] = error_msg
+        return result
+        
+    kp_test, desc_test = sift.detectAndCompute(test_gray, None)
+    
+    if desc_test is None:
+        error_msg = "No features in test image"
+        print(f"Error: {error_msg}")
+        result['error'] = error_msg
+        return result
+    
+    best_match = None
+    best_good = 0
+    best_entry = None  # Store the full database entry, not just name
+    all_matches = []
+    
+    print(f"\nMatching against {len(database)} database images...")
+    
+    # Handle both old and new database formats
+    for entry in database:
+        # Support legacy format: (name, desc) tuple
+        if isinstance(entry, tuple):
+            img_name, desc_train = entry
+            entry_dict = {
+                'name': img_name,
+                'descriptors': desc_train,
+                'source_url': None,
+                'gdrive_file_id': None,
+                'source_type': 'legacy'
+            }
+        else:
+            # New format: dictionary
+            img_name = entry['name']
+            desc_train = entry['descriptors']
+            entry_dict = entry
+        
+        matches = flann.knnMatch(desc_test, desc_train, k=2)
+        
+        goodMatch = []
+        for m, n in matches:
+            if m.distance < 0.75 * n.distance:
+                goodMatch.append(m)
+        
+        # Store match with full entry info
+        all_matches.append({
+            'name': img_name,
+            'score': len(goodMatch),
+            'source_url': entry_dict.get('source_url'),
+            'gdrive_file_id': entry_dict.get('gdrive_file_id'),
+            'gdrive_view_link': entry_dict.get('gdrive_view_link'),
+            'source_type': entry_dict.get('source_type', 'unknown')
+        })
+        
+        if len(goodMatch) > best_good:
+            best_good = len(goodMatch)
+            best_entry = entry_dict
+            best_match = goodMatch
+    
+    # Sort all matches by score
+    all_matches.sort(key=lambda x: x['score'], reverse=True)
+    result['all_matches'] = all_matches
+    
+    print(f"\n Top matches:")
+    for match in all_matches[:5]:
+        status = "Success:" if match['score'] > MIN_MATCH_COUNT else "Wrong Syntax:"
+        source_info = f" ({match['source_type']})" if match['source_type'] else ""
+        print(f"   {status} {match['name']}: {match['score']} matches{source_info}")
+    
+    if best_entry and best_good > MIN_MATCH_COUNT:
+        result['success'] = True
+        result['best_match'] = best_entry['name']
+        result['match_score'] = best_good
+        
+        # Populate matched image info
+        result['matched_image'] = {
+            'name': best_entry['name'],
+            'source_url': best_entry.get('source_url'),
+            'source_type': best_entry.get('source_type', 'unknown'),
+            'gdrive_file_id': best_entry.get('gdrive_file_id'),
+            'gdrive_view_link': best_entry.get('gdrive_view_link')
+        }
+        
+        print(f"\nRESULT: Best match is '{best_entry['name']}' with {best_good} matches")
+        print(f"   Matched image source: {best_entry.get('source_url', 'N/A')}")
+        
+        # Create annotated image
+        test_color = cv2.cvtColor(test_gray, cv2.COLOR_GRAY2BGR)
+        text = f'Match: {best_entry["name"]}'
+        (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_COMPLEX, 1, 2)
+        
+        cv2.rectangle(test_color, (10, 10), (10 + text_width, 40), (0, 0, 0), -1)
+        cv2.putText(test_color, text, (10, 35), 
+                   cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(test_color, f'Score: {best_good} matches', 
+                   (10, 80), cv2.FONT_HERSHEY_COMPLEX, 0.7, (0, 255, 0), 2)
+        
+        # Save to Google Drive if folder provided
+        if output_gdrive_folder_id:
+            try:
+                print(f"Saving matched result to Google Drive...")
+                
+                upload_result = save_image_to_gdrive(
+                    test_color, 
+                    f"match_{best_entry['name']}.jpg", 
+                    output_gdrive_folder_id
+                )
+                
+                if upload_result['success']:
+                    result['saved_to_gdrive'] = True
+                    result['gdrive_file_id'] = upload_result['id']
+                    result['gdrive_view_link'] = upload_result['view_link']
+                    
+                    # Also update query_image section
+                    result['query_image']['saved_to_gdrive'] = True
+                    result['query_image']['gdrive_file_id'] = upload_result['id']
+                    result['query_image']['gdrive_view_link'] = upload_result['view_link']
+                    
+                    print(f"Success: Saved to Google Drive: {upload_result['name']}")
+                else:
+                    raise Exception(upload_result.get('error', 'Unknown upload error'))
+                
+            except Exception as e:
+                print(f"Error: Failed to save to Google Drive: {e}")
+                result['error'] = f"Match found but GDrive save failed: {e}"
+        
+    else:
+        print(f"\nWrong Syntax: No sufficient matches found (best was {best_good}, need >{MIN_MATCH_COUNT})")
+        result['error'] = f"No match found (best score: {best_good}, threshold: {MIN_MATCH_COUNT})"
+    
+    return result
+
+
+def build_database_live_capture():
+    """Interactive live capture mode (placeholder)"""
+    print("Camera: Live capture mode not implemented yet")
+    print("Planned: Open webcam, press 's' to save frame, 'q' to quit")
+
+
+def detect_live_from_database():
+    """Live detection from webcam (placeholder)"""
+    print("Record: Live detection mode not implemented yet")
+    print("Planned: Continuous webcam feed with real-time matching")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="SIFT Database Training & Detection")
+    parser.add_argument('--mode', choices=['train_local', 'train_gdrive', 'train_url', 'detect', 'detect_live'], 
+                       default='detect', help="Mode: train_local, train_gdrive, train_url, detect, detect_live")
+    parser.add_argument('--source', type=str, 
+                       help="Source: local folder path, GDrive URL, or image URL")
+    parser.add_argument('--test_img', type=str, help="Test image path/URL for detection")
+    parser.add_argument('--output_folder', type=str, 
+                       help="Google Drive folder ID to save match results")
+    
+    args = parser.parse_args()
+    
+    database = load_database()
+    
+    if args.mode == 'train_local':
+        print("=== LOCAL TRAINING MODE ===")
+        source = args.source or IMAGE_DIR
+        build_database_from_files(source)
+        
+    elif args.mode == 'train_gdrive':
+        print("=== GOOGLE DRIVE TRAINING MODE ===")
+        if not args.source:
+            print("Wrong Syntax: Provide GDrive folder URL: --source 'https://drive.google.com/drive/folders/ ...'")
+            return
+        build_database_from_gdrive(args.source)
+        
+    elif args.mode == 'train_url':
+        print("=== URL TRAINING MODE ===")
+        if not args.source:
+            print("Wrong Syntax: Provide image URL: --source 'https://example.com/image.jpg'")
+            return
+        build_database_from_url(args.source)
+        
+    elif args.mode == 'detect':
+        if not database:
+            print("Wrong Syntax: No database found. Train first!")
+            print("   Local:  python sift_db.py --mode train_local")
+            print("   GDrive: python sift_db.py --mode train_gdrive --source <folder_url>")
+            return
+        
+        test_img = args.test_img or args.source
+        if not test_img:
+            print("Wrong Syntax: Provide test image: --test_img path_or_url_to_image.jpg")
+            return
+            
+        print("=== DETECTION MODE ===")
+        
+        # Call with optional output folder
+        result = detect_from_database(test_img, database, args.output_folder)
+        
+        # Print summary for automation/logging
+        print(f"\n# RESULT SUMMARY:")
+        print(f"   Success: {result['success']}")
+        print(f"   Best Match: {result['best_match']}")
+        print(f"   Score: {result['match_score']}")
+        print(f"   Saved to GDrive: {result['saved_to_gdrive']}")
+        if result.get('gdrive_file_id'):
+            print(f"   GDrive File ID: {result['gdrive_file_id']}")
+            print(f"   View Link: {result.get('gdrive_view_link', 'N/A')}")
+        
+    elif args.mode == 'detect_live':
+        print("=== LIVE DETECTION MODE ===")
+        detect_live_from_database()
+
+
+if __name__ == "__main__":
+    main()
+│   ├── res
+│   │   ├── client_secret.json
+│   │   ├── credentials.json
+│   │   ├── reports
+│   │   │   └── report1.jpg
+│   │   ├── sift_database.pkl
+│   │   ├── token.pickle
+│   │   └── train
+│   │       └── train1.jpg
+│   ├── routes.py
+from flask import Blueprint, request, jsonify
+from sift.services import train_model, process_image
+from core.config import Config
+
+sift_bp = Blueprint('sift', __name__)
+
+@sift_bp.route('/train', methods=['POST'])
+def train_model_route():
+    gdrive_url = Config.GDRIVE_URL
+    if not gdrive_url:
+        return jsonify({"error": "Missing 'gdrive_url' in request body."}), 400
+    
+    result = train_model(gdrive_url)
+    return jsonify({
+        "message": "Trained model successfully",
+        "result": result
+    }), 201
+
+
+@sift_bp.route('/process', methods=['POST'])
+def process_image_route():
+    data = request.get_json()
+    image_url = data.get('image_url')
+    if not image_url:
+        return jsonify({"error": "Missing 'image_url' in request body."}), 400
+    
+    result = process_image(image_url)
+    return jsonify(result)
+
+
+│   └── services.py
+import sift.algorithm as sift
+
+def train_model(gdrive_url):
+    database = sift.load_database()
+    if database:
+        print("⚠️ Database already exists. Training will overwrite the existing database.")
+    
+    result = sift.build_database_from_gdrive(gdrive_url)
+    
+    # Return JSON-serializable response (not the raw database)
+    return {
+        "success": True,
+        "message": "Training completed successfully",
+        "images_processed": len(result),
+        "database_location": sift.DB_FILE
+    }
+
+def process_image(image_url):
+    GDRIVE_FOLDER_ID = "1qtyquqQntdIu9FU8nnu-cmWkL6Lt1oXm"
+
+    database = sift.load_database()
+
+    if not database:
+        return {"error": "Database not found. Please train the model first."}
+    
+    result = sift.detect_from_database(image_url, database, GDRIVE_FOLDER_ID)
+    
+    # Convert to clean JSON response
+    json_result = {
+        "success": result.get('success', False),
+        
+        # QUERY IMAGE (the one being processed/uploaded)
+        "query_image": {
+            "original_source": result['query_image']['original_source'],
+            "source_type": result['query_image']['source_type'],
+            "saved_to_gdrive": result['query_image']['saved_to_gdrive'],
+            "gdrive_file_id": result['query_image']['gdrive_file_id'],
+            "gdrive_view_link": result['query_image']['gdrive_view_link']
+        },
+        
+        # MATCHED IMAGE (from database)
+        "matched_image": {
+            "name": result['matched_image']['name'],
+            "match_score": int(result.get('match_score', 0)),
+            "source_url": result['matched_image']['source_url'],
+            "source_type": result['matched_image']['source_type'],
+            "gdrive_file_id": result['matched_image']['gdrive_file_id'],
+            "gdrive_view_link": result['matched_image']['gdrive_view_link']
+        },
+        
+        # All potential matches
+        "all_matches": [
+            {
+                "name": m['name'],
+                "score": int(m['score']),
+                "source_url": m['source_url'],
+                "source_type": m['source_type'],
+                "gdrive_view_link": m.get('gdrive_view_link')
+            }
+            for m in result.get('all_matches', [])
+        ],
+        
+        "error": result.get('error')
+    }
+    
+    # Print summary
+    print(f"\nRESULT SUMMARY:")
+    print(f"   Success: {json_result['success']}")
+    print(f"\n   QUERY IMAGE:")
+    print(f"      Source: {json_result['query_image']['original_source'][:60]}...")
+    print(f"      Type: {json_result['query_image']['source_type']}")
+    print(f"      Saved to GDrive: {json_result['query_image']['saved_to_gdrive']}")
+    if json_result['query_image'].get('gdrive_view_link'):
+        print(f"      View Link: {json_result['query_image']['gdrive_view_link']}")
+    
+    print(f"\n   MATCHED IMAGE:")
+    print(f"      Name: {json_result['matched_image']['name']}")
+    print(f"      Score: {json_result['matched_image']['match_score']}")
+    print(f"      Source URL: {json_result['matched_image'].get('source_url', 'N/A')}")
+    print(f"      Source Type: {json_result['matched_image'].get('source_type', 'N/A')}")
+    if json_result['matched_image'].get('gdrive_view_link'):
+        print(f"      GDrive Link: {json_result['matched_image']['gdrive_view_link']}")
+    
+    return json_result
+└── stats
+    ├── routes.py
+    from flask import Blueprint, jsonify
+from models.reports_model import Reports, db
+from models.pending_claims_model import PendingClaims
+from models.returns_model import Returns
+from sqlalchemy import func
+
+stats_bp = Blueprint('stats', __name__)
+
+@stats_bp.route('/dashboard', methods=['GET'])
+def get_dashboard_stats():
+    """Get statistics for admin dashboard."""
+    try:
+        # Total reports
+        total_reports = Reports.query.count()
+        
+        # Pending claims
+        pending_claims = PendingClaims.query.filter_by(status='pending').count()
+        
+        # Resolved/returned items
+        resolved = Returns.query.filter_by(status='returned').count()
+        
+        # Active users (unique claimants)
+        active_users = db.session.query(PendingClaims.student_number).distinct().count()
+        
+        # Reports by status
+        lost_reports = Reports.query.filter(Reports.status.like('%lost%')).count()
+        found_reports = Reports.query.filter(Reports.status.like('%found%')).count()
+        published_reports = Reports.query.filter(Reports.status.startswith('published')).count()
+        
+        # Recent activity (last 7 days)
+        from datetime import datetime, timedelta
+        last_week = datetime.utcnow() - timedelta(days=7)
+        recent_reports = Reports.query.filter(Reports.date_reported >= last_week).count()
+        recent_claims = PendingClaims.query.filter(PendingClaims.date_claimed >= last_week).count()
+        
+        return jsonify({
+            "stats": {
+                "total_reports": total_reports,
+                "pending_claims": pending_claims,
+                "resolved": resolved,
+                "active_users": active_users,
+                "lost_reports": lost_reports,
+                "found_reports": found_reports,
+                "published_reports": published_reports,
+                "recent_reports": recent_reports,
+                "recent_claims": recent_claims
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@stats_bp.route('/reports-by-category', methods=['GET'])
+def get_reports_by_category():
+    """Get report counts by category."""
+    try:
+        from sqlalchemy import func
+        
+        results = db.session.query(
+            Reports.category,
+            func.count(Reports.report_id)
+        ).group_by(Reports.category).all()
+        
+        return jsonify({
+            "categories": [
+                {"name": cat or "Uncategorized", "count": count}
+                for cat, count in results
+            ]
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    └── services.py

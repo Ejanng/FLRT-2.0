@@ -1,8 +1,11 @@
+// client/src/components/ReportForm.tsx
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Upload, X, Loader2, Camera, MapPin, Calendar, FileText, Sparkles } from 'lucide-react'
 import PersonalInfoModal from './PersonalInfoModal'
 import MatchResultCard from './MatchResultCard'
+import { reportsApi } from '../services/api'
 
 interface ReportFormData {
   itemName: string
@@ -21,6 +24,7 @@ const MAX_CHARS = 1000
 
 export default function ReportForm() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   
   const [formData, setFormData] = useState<ReportFormData>({
     itemName: '',
@@ -38,7 +42,47 @@ export default function ReportForm() {
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | ''>('')
   const [showModal, setShowModal] = useState(false)
   const [matchResult, setMatchResult] = useState<any>(null)
-  const [isLoading, setIsLoading] = useState(false)
+
+  const submitMutation = useMutation({
+    mutationFn: (data: FormData) => reportsApi.submit(data),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['all-reports'] })
+      queryClient.invalidateQueries({ queryKey: ['recent-reports'] })
+      
+      if (data.missing_fields === 'Missing') {
+        setPendingData(formData)
+        setMatchResult(data.match_result || null)
+        setShowModal(true)
+        setSubmitStatus('')
+        setSubmitMessage('')
+      } else {
+        setSubmitStatus('success')
+        setSubmitMessage(data.message || 'Report submitted successfully!')
+        
+        if (data.new_pending_claim) {
+          setMatchResult({
+            name: data.new_pending_claim.image?.split('/').pop() || 'Matched Item',
+            gdrive_view_link: data.new_pending_claim.image,
+          })
+        }
+
+        setFormData({
+          itemName: '',
+          description: '',
+          status: '',
+          location: '',
+          date: '',
+          time: '',
+          photo: null,
+        })
+        setPhotoPreview('')
+      }
+    },
+    onError: (error: any) => {
+      setSubmitStatus('error')
+      setSubmitMessage(error.message || 'Failed to submit report')
+    },
+  })
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -68,82 +112,46 @@ export default function ReportForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
     setSubmitMessage('')
+    setSubmitStatus('')
 
-    try {
-      const formDataToSend = new FormData()
-      formDataToSend.append('item_name', formData.itemName)
-      formDataToSend.append('description', formData.description)
-      formDataToSend.append('status', formData.status)
-      formDataToSend.append('location', formData.location)
-      formDataToSend.append('date', formData.date)
-      formDataToSend.append('time', formData.time || '')
-      
-      if (formData.photo) {
-        formDataToSend.append('image', formData.photo)
-      }
-
-      const response = await fetch('http://localhost:5000/reports/report-item', {
-        method: 'POST',
-        body: formDataToSend,
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to submit')
-      }
-
-      if (data.missing_fields === 'Missing') {
-        setPendingData(formData)
-        setShowModal(true)
-        setIsLoading(false)
-        return
-      }
-
-      setSubmitStatus('success')
-      setSubmitMessage(data.message)
-      
-      if (data.new_pending_claim) {
-        setMatchResult({
-          name: data.new_pending_claim.image?.split('/').pop() || 'Matched Item',
-          gdrive_view_link: data.new_pending_claim.image,
-        })
-      }
-
-      // Reset form
-      setFormData({
-        itemName: '',
-        description: '',
-        status: '',
-        location: '',
-        date: '',
-        time: '',
-        photo: null,
-      })
-      setPhotoPreview('')
-    } catch (error) {
-      setSubmitStatus('error')
-      setSubmitMessage(error instanceof Error ? error.message : 'An error occurred')
-    } finally {
-      setIsLoading(false)
+    const formDataToSend = new FormData()
+    formDataToSend.append('item_name', formData.itemName)
+    formDataToSend.append('description', formData.description)
+    formDataToSend.append('status', formData.status)
+    formDataToSend.append('location', formData.location)
+    formDataToSend.append('date', formData.date)
+    formDataToSend.append('time', formData.time || '')
+    
+    if (formData.photo) {
+      formDataToSend.append('image', formData.photo)
     }
+
+    submitMutation.mutate(formDataToSend)
   }
 
-  const handlePersonalInfoSubmit = (info: { studentName: string; studentNumber: string; contactInfo: string }) => {
+  const handlePersonalInfoSubmit = async (info: { studentName: string; studentNumber: string; contactInfo: string }) => {
     if (!pendingData) return
-    // Resubmit with personal info
-    setShowModal(false)
-    setIsLoading(true)
     
-    // Simulate resubmission
-    setTimeout(() => {
-      setSubmitStatus('success')
-      setSubmitMessage('Report submitted successfully with your contact info!')
-      setIsLoading(false)
-      setPendingData(null)
-    }, 1000)
+    setShowModal(false)
+    
+    const formDataToSend = new FormData()
+    formDataToSend.append('item_name', pendingData.itemName)
+    formDataToSend.append('description', pendingData.description)
+    formDataToSend.append('status', pendingData.status)
+    formDataToSend.append('location', pendingData.location)
+    formDataToSend.append('date', pendingData.date)
+    formDataToSend.append('time', pendingData.time || '')
+    formDataToSend.append('student_name', info.studentName)
+    formDataToSend.append('student_number', info.studentNumber)
+    formDataToSend.append('contact_info', info.contactInfo)
+    
+    if (pendingData.photo) {
+      formDataToSend.append('image', pendingData.photo)
+    }
+
+    submitMutation.mutate(formDataToSend)
+    setPendingData(null)
   }
 
   const charCount = formData.description.length
@@ -317,11 +325,22 @@ export default function ReportForm() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 pt-4">
-          <button type="submit" disabled={isLoading} className="flex-1 btn-primary flex items-center justify-center gap-2 py-3">
-            {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} className="text-[#f5e102]" />}
-            {isLoading ? 'Processing...' : 'Submit Report'}
+          <button 
+            type="submit" 
+            disabled={submitMutation.isPending} 
+            className="flex-1 btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-50"
+          >
+            {submitMutation.isPending ? (
+              <><Loader2 size={20} className="animate-spin" /> Processing...</>
+            ) : (
+              <><Sparkles size={20} className="text-[#f5e102]" /> Submit Report</>
+            )}
           </button>
-          <button type="button" onClick={() => navigate({ to: '/' })} className="flex-1 btn-secondary py-3">
+          <button 
+            type="button" 
+            onClick={() => navigate({ to: '/' })} 
+            className="flex-1 btn-secondary py-3"
+          >
             Cancel
           </button>
         </div>
@@ -334,7 +353,7 @@ export default function ReportForm() {
           setPendingData(null)
         }}
         onSubmit={handlePersonalInfoSubmit}
-        isLoading={isLoading}
+        isLoading={submitMutation.isPending}
         matchFound={!!matchResult}
       />
     </div>

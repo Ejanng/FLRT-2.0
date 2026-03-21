@@ -1,0 +1,1942 @@
+client/src/
+├── components
+│   ├── Header.tsx
+import { Link } from '@tanstack/react-router'
+import { useState } from 'react'
+import { Menu, X, Home, FileText, Search, Shield, Sun, Moon } from 'lucide-react'
+import { useTheme } from '../context/ThemeContext'
+
+export default function Header() {
+  const [isOpen, setIsOpen] = useState(false)
+  const { theme, toggleTheme } = useTheme()
+
+  // Simple path detection without useRouter
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/'
+  
+  const isActive = (path: string) => {
+    if (path === '/') return currentPath === '/'
+    return currentPath.startsWith(path)
+  }
+
+  const navItems = [
+    { to: '/', label: 'Home', icon: Home },
+    { to: '/report', label: 'Report', icon: FileText },
+    { to: '/claim', label: 'Find', icon: Search },
+    { to: '/admin', label: 'Admin', icon: Shield },
+  ]
+
+  return (
+    <>
+      <header className="sticky top-0 z-50 glass-card border-b border-[#0217f7]/10 dark:border-[#f5e102]/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#0217f7] to-[#010bb3] rounded-xl flex items-center justify-center">
+              <span className="text-white font-bold text-lg">F</span>
+              <div className="absolute w-3 h-3 bg-[#f5e102] rounded-full animate-pulse ml-6 -mt-6" />
+            </div>
+            <span className="text-2xl font-bold hidden sm:block">
+              <span className="text-[#0217f7] dark:text-white">FL</span>
+              <span className="text-[#f5e102]">R</span>
+              <span className="text-[#0217f7] dark:text-white">T</span>
+            </span>
+          </Link>
+
+          <nav className="hidden md:flex items-center gap-2">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const active = isActive(item.to)
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
+                    active
+                      ? 'bg-gradient-to-r from-[#0217f7] to-[#010bb3] text-white'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-[#0217f7]/10'
+                  }`}
+                >
+                  <Icon size={18} className={active ? 'text-[#f5e102]' : ''} />
+                  {item.label}
+                </Link>
+              )
+            })}
+            
+            <button
+              onClick={toggleTheme}
+              className="ml-4 p-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-[#f5e102] hover:bg-[#0217f7] hover:text-white transition-all"
+            >
+              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+            </button>
+          </nav>
+
+          <div className="flex items-center gap-2 md:hidden">
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800"
+            >
+              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+            </button>
+            <button
+              onClick={() => setIsOpen(true)}
+              className="p-2 rounded-lg bg-gradient-to-r from-[#0217f7] to-[#010bb3] text-white"
+            >
+              <Menu size={24} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {isOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setIsOpen(false)} />
+          <aside className="absolute top-0 right-0 h-full w-80 bg-white dark:bg-[#12121a] shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b dark:border-gray-800">
+              <span className="text-xl font-bold text-[#0217f7] dark:text-[#f5e102]">Menu</span>
+              <button onClick={() => setIsOpen(false)}>
+                <X size={24} className="text-gray-600 dark:text-gray-300" />
+              </button>
+            </div>
+            <nav className="p-4 space-y-2">
+              {navItems.map((item) => {
+                const Icon = item.icon
+                const active = isActive(item.to)
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setIsOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl ${
+                      active
+                        ? 'bg-gradient-to-r from-[#0217f7] to-[#010bb3] text-white'
+                        : 'text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    <Icon size={20} />
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </nav>
+          </aside>
+        </div>
+      )}
+    </>
+  )
+}
+│   ├── MatchResultCard.tsx
+import { ExternalLink } from 'lucide-react'
+
+interface MatchResult {
+  name: string
+  score?: number
+  gdrive_view_link?: string
+}
+
+export default function MatchResultCard({ match }: { match: MatchResult }) {
+  return (
+    <div className="mb-6 bg-gradient-to-r from-[#f5e102]/20 to-[#f5e102]/5 border-2 border-[#f5e102] rounded-xl p-4">
+      <div className="flex justify-between items-center mb-2">
+        <span className="bg-[#0217f7] text-white text-xs font-bold px-3 py-1 rounded-full">Match Found</span>
+      </div>
+      <p className="text-gray-700 dark:text-gray-300 text-sm mb-2">
+        <span className="font-semibold">Item:</span> {match.name}
+      </p>
+      {match.gdrive_view_link && (
+        <a
+          href={match.gdrive_view_link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-[#0217f7] dark:text-[#f5e102] text-sm font-medium hover:underline"
+        >
+          View Image <ExternalLink size={14} />
+        </a>
+      )}
+    </div>
+  )
+}
+│   ├── PersonalInfoModal.tsx
+import { useState } from 'react'
+import { X, CheckCircle } from 'lucide-react'
+
+interface Props {
+  isOpen: boolean
+  onClose: () => void
+  onSubmit: (info: { studentName: string; studentNumber: string; contactInfo: string }) => void
+  isLoading: boolean
+  matchFound: boolean
+}
+
+export default function PersonalInfoModal({ isOpen, onClose, onSubmit, isLoading, matchFound }: Props) {
+  const [info, setInfo] = useState({ studentName: '', studentNumber: '', contactInfo: '' })
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  if (!isOpen) return null
+
+  const validate = () => {
+    const newErrors: Record<string, string> = {}
+    if (!info.studentName.trim()) newErrors.studentName = 'Required'
+    if (!info.studentNumber.trim()) newErrors.studentNumber = 'Required'
+    if (!info.contactInfo.trim()) {
+      newErrors.contactInfo = 'Required'
+    } else if (!info.contactInfo.includes('@') && !info.contactInfo.startsWith('0')) {
+      newErrors.contactInfo = 'Enter valid email or phone'
+    }
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (validate()) onSubmit(info)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-[#1e1e2e] rounded-2xl max-w-md w-full p-6 shadow-2xl">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Additional Info</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={24} />
+          </button>
+        </div>
+
+        {matchFound && (
+          <div className="mb-4 bg-[#f5e102]/20 border border-[#f5e102] rounded-lg p-3 flex gap-3">
+            <CheckCircle className="text-[#0217f7] dark:text-[#f5e102] flex-shrink-0" size={20} />
+            <p className="text-sm text-gray-700 dark:text-gray-300">Match found! Provide contact details to proceed.</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">
+              Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={info.studentName}
+              onChange={(e) => setInfo((prev) => ({ ...prev, studentName: e.target.value }))}
+              placeholder="Juan Dela Cruz"
+              className={`input-field ${errors.studentName ? 'border-red-500' : ''}`}
+            />
+            {errors.studentName && <span className="text-xs text-red-500">{errors.studentName}</span>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">
+              Student Number <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={info.studentNumber}
+              onChange={(e) => setInfo((prev) => ({ ...prev, studentNumber: e.target.value }))}
+              placeholder="2024-12345"
+              className={`input-field ${errors.studentNumber ? 'border-red-500' : ''}`}
+            />
+            {errors.studentNumber && <span className="text-xs text-red-500">{errors.studentNumber}</span>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">
+              Contact <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={info.contactInfo}
+              onChange={(e) => setInfo((prev) => ({ ...prev, contactInfo: e.target.value }))}
+              placeholder="juan@email.com or 09123456789"
+              className={`input-field ${errors.contactInfo ? 'border-red-500' : ''}`}
+            />
+            {errors.contactInfo && <span className="text-xs text-red-500">{errors.contactInfo}</span>}
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+              Cancel
+            </button>
+            <button type="submit" disabled={isLoading} className="flex-1 btn-primary">
+              {isLoading ? 'Submitting...' : 'Complete'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+│   └── ReportForm.tsx
+import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { Upload, X, Loader2, Camera, MapPin, Calendar, FileText, Sparkles } from 'lucide-react'
+import PersonalInfoModal from './PersonalInfoModal'
+import MatchResultCard from './MatchResultCard'
+
+interface ReportFormData {
+  itemName: string
+  description: string
+  status: 'lost' | 'found' | ''
+  location: string
+  date: string
+  time?: string
+  photo: File | null
+  studentName?: string
+  studentNumber?: string
+  contactInfo?: string
+}
+
+const MAX_CHARS = 1000
+
+export default function ReportForm() {
+  const navigate = useNavigate()
+  
+  const [formData, setFormData] = useState<ReportFormData>({
+    itemName: '',
+    description: '',
+    status: '',
+    location: '',
+    date: '',
+    time: '',
+    photo: null,
+  })
+  
+  const [pendingData, setPendingData] = useState<ReportFormData | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string>('')
+  const [submitMessage, setSubmitMessage] = useState<string>('')
+  const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | ''>('')
+  const [showModal, setShowModal] = useState(false)
+  const [matchResult, setMatchResult] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setFormData((prev) => ({ ...prev, photo: file }))
+      const reader = new FileReader()
+      reader.onloadend = () => setPhotoPreview(reader.result as string)
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    const file = e.dataTransfer.files?.[0]
+    if (file?.type.startsWith('image/')) {
+      setFormData((prev) => ({ ...prev, photo: file }))
+      const reader = new FileReader()
+      reader.onloadend = () => setPhotoPreview(reader.result as string)
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    setSubmitMessage('')
+
+    try {
+      const formDataToSend = new FormData()
+      formDataToSend.append('item_name', formData.itemName)
+      formDataToSend.append('description', formData.description)
+      formDataToSend.append('status', formData.status)
+      formDataToSend.append('location', formData.location)
+      formDataToSend.append('date', formData.date)
+      formDataToSend.append('time', formData.time || '')
+      
+      if (formData.photo) {
+        formDataToSend.append('image', formData.photo)
+      }
+
+      const response = await fetch('http://localhost:5000/reports/report-item', {
+        method: 'POST',
+        body: formDataToSend,
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to submit')
+      }
+
+      if (data.missing_fields === 'Missing') {
+        setPendingData(formData)
+        setShowModal(true)
+        setIsLoading(false)
+        return
+      }
+
+      setSubmitStatus('success')
+      setSubmitMessage(data.message)
+      
+      if (data.new_pending_claim) {
+        setMatchResult({
+          name: data.new_pending_claim.image?.split('/').pop() || 'Matched Item',
+          gdrive_view_link: data.new_pending_claim.image,
+        })
+      }
+
+      // Reset form
+      setFormData({
+        itemName: '',
+        description: '',
+        status: '',
+        location: '',
+        date: '',
+        time: '',
+        photo: null,
+      })
+      setPhotoPreview('')
+    } catch (error) {
+      setSubmitStatus('error')
+      setSubmitMessage(error instanceof Error ? error.message : 'An error occurred')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handlePersonalInfoSubmit = (info: { studentName: string; studentNumber: string; contactInfo: string }) => {
+    if (!pendingData) return
+    // Resubmit with personal info
+    setShowModal(false)
+    setIsLoading(true)
+    
+    // Simulate resubmission
+    setTimeout(() => {
+      setSubmitStatus('success')
+      setSubmitMessage('Report submitted successfully with your contact info!')
+      setIsLoading(false)
+      setPendingData(null)
+    }, 1000)
+  }
+
+  const charCount = formData.description.length
+  const progress = Math.min((charCount / MAX_CHARS) * 100, 100)
+
+  return (
+    <div className="glass-card rounded-3xl p-6 sm:p-8 lg:p-10">
+      {submitMessage && (
+        <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
+          submitStatus === 'success' 
+            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200' 
+            : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200'
+        }`}>
+          {submitStatus === 'success' ? <Sparkles size={20} /> : <X size={20} />}
+          {submitMessage}
+        </div>
+      )}
+
+      {matchResult && <MatchResultCard match={matchResult} />}
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+            <FileText size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+            Item Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            name="itemName"
+            value={formData.itemName}
+            onChange={handleInputChange}
+            placeholder="e.g., Black Backpack, iPhone 13"
+            required
+            className="input-field"
+          />
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+            <FileText size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+            Description <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            name="description"
+            value={formData.description}
+            onChange={handleInputChange}
+            placeholder="Provide detailed description..."
+            rows={4}
+            maxLength={MAX_CHARS}
+            required
+            className="input-field resize-none"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-[#0217f7] to-[#f5e102] transition-all" style={{ width: `${progress}%` }} />
+            </div>
+            <span className="text-xs text-gray-500">{charCount}/{MAX_CHARS}</span>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              <Sparkles size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              Status <span className="text-red-500">*</span>
+            </label>
+            <select
+              name="status"
+              value={formData.status}
+              onChange={handleInputChange}
+              required
+              className="input-field appearance-none bg-white dark:bg-[#1e1e2e]"
+            >
+              <option value="">Select status</option>
+              <option value="lost">Lost</option>
+              <option value="found">Found</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              <MapPin size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              Location <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="location"
+              value={formData.location}
+              onChange={handleInputChange}
+              placeholder="e.g., Library 2nd Floor"
+              required
+              className="input-field"
+            />
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              <Calendar size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              Date <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              name="date"
+              value={formData.date}
+              onChange={handleInputChange}
+              required
+              className="input-field"
+            />
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              <Calendar size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              Time <span className="text-gray-400 text-xs">(Optional)</span>
+            </label>
+            <input
+              type="time"
+              name="time"
+              value={formData.time}
+              onChange={handleInputChange}
+              className="input-field"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+            <Camera size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+            Photo <span className="text-gray-400 text-xs">(Optional)</span>
+          </label>
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleDrop}
+            className="relative border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-[#0217f7] dark:hover:border-[#f5e102] transition-all cursor-pointer group"
+          >
+            {photoPreview ? (
+              <div className="relative inline-block">
+                <img src={photoPreview} alt="Preview" className="max-h-48 rounded-xl shadow-lg" />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setFormData((prev) => ({ ...prev, photo: null }))
+                    setPhotoPreview('')
+                  }}
+                  className="absolute -top-3 -right-3 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#0217f7] to-[#010bb3] flex items-center justify-center">
+                  <Upload size={28} className="text-[#f5e102]" />
+                </div>
+                <p className="text-gray-700 dark:text-gray-300">
+                  <span className="text-[#0217f7] dark:text-[#f5e102] font-semibold">Click to upload</span> or drag and drop
+                </p>
+                <p className="text-xs text-gray-400">JPEG, PNG (Max 5MB)</p>
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoUpload}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 pt-4">
+          <button type="submit" disabled={isLoading} className="flex-1 btn-primary flex items-center justify-center gap-2 py-3">
+            {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} className="text-[#f5e102]" />}
+            {isLoading ? 'Processing...' : 'Submit Report'}
+          </button>
+          <button type="button" onClick={() => navigate({ to: '/' })} className="flex-1 btn-secondary py-3">
+            Cancel
+          </button>
+        </div>
+      </form>
+
+      <PersonalInfoModal
+        isOpen={showModal}
+        onClose={() => {
+          setShowModal(false)
+          setPendingData(null)
+        }}
+        onSubmit={handlePersonalInfoSubmit}
+        isLoading={isLoading}
+        matchFound={!!matchResult}
+      />
+    </div>
+  )
+}
+├── context
+│   └── ThemeContext.tsx
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+
+type Theme = 'light' | 'dark'
+
+interface ThemeContextType {
+  theme: Theme
+  toggleTheme: () => void
+}
+
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('flrt-theme') as Theme
+      if (saved) return saved
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    }
+    return 'light'
+  })
+
+  useEffect(() => {
+    const root = window.document.documentElement
+    root.classList.remove('light', 'dark')
+    root.classList.add(theme)
+    localStorage.setItem('flrt-theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
+  }
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  )
+}
+
+export function useTheme() {
+  const context = useContext(ThemeContext)
+  if (context === undefined) {
+    throw new Error('useTheme must be used within a ThemeProvider')
+  }
+  return context
+}
+├── logo.svg
+├── main.tsx
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { RouterProvider, createRouter } from '@tanstack/react-router'
+import { routeTree } from './routeTree.gen'
+import './styles.css'
+
+const router = createRouter({
+  routeTree,
+  context: {},
+  defaultPreload: 'intent',
+  scrollRestoration: true,
+  defaultStructuralSharing: true,
+  defaultPreloadStaleTime: 0,
+})
+
+declare module '@tanstack/react-router' {
+  interface Register {
+    router: typeof router
+  }
+}
+
+const rootElement = document.getElementById('app')
+if (rootElement && !rootElement.innerHTML) {
+  const root = createRoot(rootElement)
+  root.render(
+    <StrictMode>
+      <RouterProvider router={router} />
+    </StrictMode>,
+  )
+}
+├── reportWebVitals.ts
+├── routes
+│   ├── admin
+│   │   ├── dashboard
+│   │   │   ├── index.tsx
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useState, useEffect } from 'react'
+import { Box, Clock, CheckCircle, TrendingUp, Search } from 'lucide-react'
+
+interface Report {
+  id: string
+  item: string
+  location: string
+  date: string
+  status: 'claimed' | 'resolved'
+}
+
+export const Route = createFileRoute('/admin/dashboard/')({
+  component: DashboardPage,
+})
+
+function DashboardPage() {
+  const navigate = useNavigate()
+  const [reports] = useState<Report[]>([
+    { id: 'R-1001', item: 'Wallet', location: 'Library', date: '2026-02-12', status: 'resolved' },
+    { id: 'R-1002', item: 'Umbrella', location: 'Cafeteria', date: '2026-02-13', status: 'claimed' },
+    { id: 'R-1003', item: 'Phone', location: 'Lab 204', date: '2026-02-14', status: 'resolved' },
+  ])
+
+  const stats = [
+    { icon: Box, label: 'Total Reports', value: '267', color: 'blue' },
+    { icon: Clock, label: 'Pending', value: '0', color: 'yellow' },
+    { icon: CheckCircle, label: 'Resolved', value: '90', color: 'green' },
+    { icon: TrendingUp, label: 'Users', value: '1', color: 'purple' },
+  ]
+
+  // Add inside DashboardPage component, after stats array
+  useEffect(() => {
+    const handleStorage = () => {
+      // Refresh data when reports are updated
+      window.location.reload()
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [])
+
+  return (
+    <div className="min-h-screen p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Stats */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {stats.map((stat) => (
+            <div key={stat.label} className="glass-card rounded-2xl p-5">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${
+                stat.color === 'yellow' ? 'bg-[#f5e102]/20 text-[#0217f7]' : 'bg-[#0217f7]/10 text-[#0217f7]'
+              }`}>
+                <stat.icon size={20} />
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{stat.label}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Main Content */}
+        <div className="glass-card rounded-2xl overflow-hidden">
+          {/* Tabs */}
+          <div className="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-800">
+            <button className="px-4 py-2 rounded-xl bg-[#0217f7] text-white text-sm font-medium">All Reports</button>
+            <button 
+              onClick={() => navigate({ to: '/admin/dashboard/verify' })}
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium"
+            >
+              Verify Claims
+            </button>
+            <button 
+              onClick={() => navigate({ to: '/admin/dashboard/reports' })}
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium"
+            >
+              Manage Reports
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input type="text" placeholder="Search reports..." className="input-field pl-10" />
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-800/50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Item</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Location</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                {reports.map((row) => (
+                  <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{row.id}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.item}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.location}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{row.date}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        row.status === 'claimed' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'
+                      }`}>
+                        {row.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+│   │   │   ├── reports.tsx
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useState, useEffect } from 'react'
+import { Search, X, CheckCircle, XCircle, Eye, Loader2, Check, Trash2 } from 'lucide-react'
+
+interface Report {
+  report_id: string
+  item_name: string
+  description: string
+  location: string
+  date_reported: string
+  status: string
+  image?: string
+  category?: string
+}
+
+export const Route = createFileRoute('/admin/dashboard/reports')({
+  component: ReportsPage,
+})
+
+function ReportsPage() {
+  const navigate = useNavigate()
+  const [reports, setReports] = useState<Report[]>([])
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [message, setMessage] = useState('')
+
+  const fetchReports = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('http://localhost:5000/reports/all-reports')
+      if (!response.ok) throw new Error('Failed to fetch')
+      const data = await response.json()
+      setReports(data.reports || [])
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchReports()
+  }, [])
+
+  const handleView = (report: Report) => {
+    setSelectedReport(report)
+    setIsModalOpen(true)
+    setMessage('')
+  }
+
+  const handlePublish = async () => {
+    if (!selectedReport) return
+    
+    setActionLoading(true)
+    setMessage('')
+    
+    try {
+      const response = await fetch('http://localhost:5000/reports/publish-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report_id: parseInt(selectedReport.report_id) }),
+      })
+
+      const data = await response.json()
+      
+      if (!response.ok) throw new Error(data.error || 'Failed to publish')
+
+      setMessage('Report published successfully! Now visible in Claim page.')
+      
+      // Update local state
+      setReports(prev => prev.map(r => 
+        r.report_id === selectedReport.report_id 
+          ? { ...r, status: 'published_' + r.status }
+          : r
+      ))
+      
+      // Trigger refresh in Claim page
+      localStorage.setItem('claimableReportsRefreshToken', Date.now().toString())
+      
+      setTimeout(() => {
+        setIsModalOpen(false)
+        setSelectedReport(null)
+      }, 1500)
+    } catch (err: any) {
+      setMessage(err.message || 'Failed to publish report')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleReject = async () => {
+    if (!selectedReport) return
+    
+    if (!confirm('Are you sure you want to reject and delete this report?')) return
+    
+    setActionLoading(true)
+    
+    try {
+      const response = await fetch(`http://localhost:5000/reports/delete-report/${selectedReport.report_id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) throw new Error('Failed to delete')
+
+      setMessage('Report rejected and deleted.')
+      
+      setReports(prev => prev.filter(r => r.report_id !== selectedReport.report_id))
+      
+      setTimeout(() => {
+        setIsModalOpen(false)
+        setSelectedReport(null)
+      }, 1500)
+    } catch (err: any) {
+      setMessage(err.message || 'Failed to delete report')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const getStatusBadge = (status: string) => {
+    if (status.startsWith('published')) {
+      return <span className="badge-yellow">Published</span>
+    }
+    if (status === 'pending') {
+      return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>
+    }
+    return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">{status}</span>
+  }
+
+  const isPublished = (status: string) => status.startsWith('published')
+
+  return (
+    <div className="min-h-screen p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="glass-card rounded-2xl overflow-hidden">
+          {/* Tabs */}
+          <div className="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
+            <button 
+              onClick={() => navigate({ to: '/admin/dashboard' })}
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium"
+            >
+              All Reports
+            </button>
+            <button 
+              onClick={() => navigate({ to: '/admin/dashboard/verify' })}
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium"
+            >
+              Verify Claims
+            </button>
+            <button className="px-4 py-2 rounded-xl bg-[#0217f7] text-white text-sm font-medium">
+              Manage Reports
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input type="text" placeholder="Search reports..." className="input-field pl-10" />
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-800/50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Item</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Description</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center">
+                      <Loader2 className="animate-spin mx-auto text-[#0217f7]" size={24} />
+                    </td>
+                  </tr>
+                ) : reports.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">No reports found</td>
+                  </tr>
+                ) : (
+                  reports.map((report) => (
+                    <tr key={report.report_id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">#{report.report_id}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{report.item_name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-xs truncate">{report.description}</td>
+                      <td className="px-4 py-3">{getStatusBadge(report.status)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                        {new Date(report.date_reported).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => handleView(report)}
+                          className="flex items-center gap-1 text-[#0217f7] dark:text-[#f5e102] hover:underline text-sm font-medium"
+                        >
+                          <Eye size={16} /> Review
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Review Modal */}
+      {isModalOpen && selectedReport && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-[#1e1e2e] rounded-2xl max-w-lg w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Review Report #{selectedReport.report_id}</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={24} />
+              </button>
+            </div>
+
+            {message && (
+              <div className={`mb-4 p-3 rounded-lg flex items-center gap-2 ${
+                message.includes('success') 
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' 
+                  : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+              }`}>
+                {message.includes('success') ? <CheckCircle size={18} /> : <XCircle size={18} />}
+                {message}
+              </div>
+            )}
+
+            {/* Report Details */}
+            <div className="space-y-4 mb-6">
+              {selectedReport.image && (
+                <div className="rounded-xl overflow-hidden">
+                  <img 
+                    src={selectedReport.image.startsWith('http') ? selectedReport.image : `http://localhost:5000/reports/images/${encodeURIComponent(selectedReport.image)}`}
+                    alt={selectedReport.item_name}
+                    className="w-full h-48 object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x200?text=No+Image'
+                    }}
+                  />
+                </div>
+              )}
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <p className="text-xs text-gray-500 uppercase">Item</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">{selectedReport.item_name}</p>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <p className="text-xs text-gray-500 uppercase">Status</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">{getStatusBadge(selectedReport.status)}</p>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <p className="text-xs text-gray-500 uppercase">Location</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">{selectedReport.location}</p>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <p className="text-xs text-gray-500 uppercase">Date</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">
+                    {new Date(selectedReport.date_reported).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <p className="text-xs text-gray-500 uppercase mb-1">Description</p>
+                <p className="text-gray-700 dark:text-gray-300 text-sm">{selectedReport.description}</p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {!isPublished(selectedReport.status) ? (
+                <>
+                  <button
+                    onClick={handlePublish}
+                    disabled={actionLoading}
+                    className="flex-1 btn-primary flex items-center justify-center gap-2 py-3"
+                  >
+                    {actionLoading ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
+                    Approve & Publish
+                  </button>
+                  <button
+                    onClick={handleReject}
+                    disabled={actionLoading}
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  >
+                    {actionLoading ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
+                    Reject & Delete
+                  </button>
+                </>
+              ) : (
+                <div className="w-full p-3 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg text-center font-medium">
+                  <CheckCircle size={18} className="inline mr-2" />
+                  This report is published and visible in Claim page
+                </div>
+              )}
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+│   │   │   └── verify.tsx
+import { createFileRoute } from '@tanstack/react-router'
+
+export const Route = createFileRoute('/admin/dashboard/verify')({
+  component: RouteComponent,
+})
+
+function RouteComponent() {
+  return <div>Hello "/admin/dashboard/verify"!</div>
+}
+
+│   │   └── index.tsx
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
+import { Mail, Lock, Eye, Shield } from 'lucide-react'
+
+export const Route = createFileRoute('/admin/')({
+  component: AdminLogin,
+})
+
+function AdminLogin() {
+  const navigate = useNavigate()
+  const [form, setForm] = useState({ email: '', password: '' })
+  const [showPassword, setShowPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    
+    try {
+      const res = await fetch('http://localhost:5000/auth/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      
+      const data = await res.json()
+      
+      if (!res.ok) throw new Error(data.message)
+      
+      localStorage.setItem('admin_token', data.access_token)
+      navigate({ to: '/admin/dashboard' })
+    } catch {
+      alert('Invalid credentials')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="w-full max-w-md glass-card rounded-3xl p-8">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto bg-gradient-to-br from-[#0217f7] to-[#010bb3] rounded-2xl flex items-center justify-center mb-4">
+            <Shield className="text-white" size={32} />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Login</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">FLRT Management System</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Email</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                placeholder="admin@flrt.com"
+                required
+                className="input-field pl-10"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Password</label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+                placeholder="••••••••"
+                required
+                className="input-field pl-10 pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <Eye size={18} />
+              </button>
+            </div>
+          </div>
+
+          <button type="submit" disabled={isLoading} className="w-full btn-primary flex items-center justify-center gap-2 py-3">
+            {isLoading ? 'Logging in...' : 'Login to FLRT'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+│   ├── claim
+│   │   ├── claimForm.tsx
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
+import { Upload, X, User, IdCard, Mail, FileText, ArrowLeft } from 'lucide-react'
+
+type SearchParams = {
+  id: string
+  name: string
+  location: string
+  date: string
+  category: string
+}
+
+export const Route = createFileRoute('/claim/claimForm')({
+  validateSearch: (search: Record<string, unknown>): SearchParams => ({
+    id: String(search.id || ''),
+    name: String(search.name || ''),
+    location: String(search.location || ''),
+    date: String(search.date || ''),
+    category: String(search.category || ''),
+  }),
+  component: ClaimFormPage,
+})
+
+function ClaimFormPage() {
+  const { id, name, location, date, category } = Route.useSearch()
+  const navigate = useNavigate()
+  const [photoPreview, setPhotoPreview] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => setPhotoPreview(reader.result as string)
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSubmitting(true)
+    setTimeout(() => {
+      setIsSubmitting(false)
+      navigate({ to: '/' })
+    }, 1000)
+  }
+
+  return (
+    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-2xl mx-auto">
+        <button onClick={() => navigate({ to: '/claim' })} className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-[#0217f7] mb-6">
+          <ArrowLeft size={20} /> Back
+        </button>
+
+        <div className="bg-[#f5e102]/10 border-2 border-[#f5e102] rounded-xl p-4 mb-6">
+          <h2 className="text-sm font-semibold text-[#0217f7] dark:text-[#f5e102] mb-2">Claiming: {name}</h2>
+          <div className="grid grid-cols-2 gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <div><span className="text-gray-500">Location:</span> {location}</div>
+            <div><span className="text-gray-500">Date:</span> {date}</div>
+            <div><span className="text-gray-500">Category:</span> {category}</div>
+          </div>
+        </div>
+
+        <div className="glass-card rounded-3xl p-6 sm:p-8">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Submit Claim</h1>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+                <User size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+                Your Name <span className="text-red-500">*</span>
+              </label>
+              <input type="text" required placeholder="Full name" className="input-field" />
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+                <IdCard size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+                Student Number <span className="text-red-500">*</span>
+              </label>
+              <input type="text" required placeholder="2024-12345" className="input-field" />
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+                <Mail size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+                Email <span className="text-red-500">*</span>
+              </label>
+              <input type="email" required placeholder="your@email.com" className="input-field" />
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+                <FileText size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+                Proof of Ownership <span className="text-red-500">*</span>
+              </label>
+              <textarea required rows={4} placeholder="Describe details only the owner would know..." className="input-field resize-none" />
+            </div>
+
+            <div>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+                <Upload size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+                Upload Proof <span className="text-red-500">*</span>
+              </label>
+              <div className="relative border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 text-center hover:border-[#0217f7] dark:hover:border-[#f5e102] transition-all cursor-pointer">
+                {photoPreview ? (
+                  <div className="relative inline-block">
+                    <img src={photoPreview} alt="Proof" className="max-h-48 rounded-xl" />
+                    <button type="button" onClick={() => setPhotoPreview('')} className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center">
+                      <X size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="w-12 h-12 mx-auto rounded-xl bg-gradient-to-br from-[#0217f7] to-[#010bb3] flex items-center justify-center">
+                      <Upload size={24} className="text-[#f5e102]" />
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Click to upload proof image</p>
+                    <p className="text-xs text-gray-400">JPG, PNG (Max 5MB)</p>
+                  </div>
+                )}
+                <input type="file" accept="image/*" onChange={handlePhotoChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-4">
+              <button type="submit" disabled={isSubmitting} className="flex-1 btn-primary flex items-center justify-center gap-2 py-3">
+                {isSubmitting ? 'Submitting...' : 'Submit Claim'}
+              </button>
+              <button type="button" onClick={() => navigate({ to: '/claim' })} className="flex-1 btn-secondary py-3">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+│   │   └── index.tsx
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useState, useEffect } from 'react'
+import { Search, MapPin, Calendar, Tag, RefreshCw, Loader2 } from 'lucide-react'
+
+interface LostItem {
+  report_id: string
+  item_name: string
+  description: string
+  location: string
+  date_reported: string
+  category: string
+  status: string
+  image: string
+}
+
+export const Route = createFileRoute('/claim/')({
+  component: ClaimantPage,
+})
+
+function ClaimantPage() {
+  const navigate = useNavigate()
+  const [items, setItems] = useState<LostItem[]>([])
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('All')
+  const [type, setType] = useState('All')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const fetchPublishedReports = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const response = await fetch('http://localhost:5000/reports/claimable-reports')
+      if (!response.ok) throw new Error('Failed to fetch')
+      
+      const data = await response.json()
+      // Normalize status to 'lost' or 'found' for display
+      const normalized = (data.reports || []).map((item: any) => ({
+        ...item,
+        status: item.status?.includes('lost') ? 'lost' : 'found'
+      }))
+      setItems(normalized)
+    } catch (err) {
+      setError('Failed to load items. Please try again.')
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchPublishedReports()
+    
+    // Refresh when localStorage changes (when admin publishes)
+    const handleStorage = () => fetchPublishedReports()
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [])
+
+  const filtered = items.filter(item => {
+    const matchesSearch = item.item_name?.toLowerCase().includes(search.toLowerCase()) || 
+                         item.description?.toLowerCase().includes(search.toLowerCase())
+    const matchesCategory = category === 'All' || item.category === category
+    const matchesType = type === 'All' || item.status === type.toLowerCase()
+    return matchesSearch && matchesCategory && matchesType
+  })
+
+  const getImageUrl = (imagePath: string) => {
+    if (!imagePath) return 'https://via.placeholder.com/300x200?text=No+Image'
+    if (imagePath.startsWith('http')) return imagePath
+    return `http://localhost:5000/reports/images/${encodeURIComponent(imagePath)}`
+  }
+
+  return (
+    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-2">
+            Browse <span className="text-gradient">Items</span>
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">Find and claim your lost items</p>
+        </div>
+
+        {/* Filters */}
+        <div className="glass-card rounded-2xl p-4 mb-6">
+          <div className="grid sm:grid-cols-4 gap-4">
+            <div className="relative sm:col-span-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="Search items..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="input-field pl-10"
+              />
+            </div>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} className="input-field">
+              <option>All Categories</option>
+              <option>Electronics</option>
+              <option>Accessories</option>
+              <option>Bags</option>
+              <option>Books</option>
+              <option>Stationery</option>
+            </select>
+            <select value={type} onChange={(e) => setType(e.target.value)} className="input-field">
+              <option>All Types</option>
+              <option>Lost</option>
+              <option>Found</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-between items-center mb-4">
+          <span className="text-gray-600 dark:text-gray-400">{filtered.length} items found</span>
+          <button
+            onClick={fetchPublishedReports}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 text-[#0217f7] dark:text-[#f5e102] border border-[#0217f7] dark:border-[#f5e102] rounded-lg hover:bg-[#0217f7] hover:text-white dark:hover:bg-[#f5e102] dark:hover:text-[#0217f7] transition-all disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-xl text-center">
+            {error}
+          </div>
+        )}
+
+        {/* Loading */}
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 size={48} className="animate-spin text-[#0217f7] dark:text-[#f5e102]" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+            No items found. Check back later!
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filtered.map((item) => (
+              <div key={item.report_id} className="card">
+                <div className="relative mb-4 overflow-hidden rounded-xl">
+                  <img 
+                    src={getImageUrl(item.image)} 
+                    alt={item.item_name} 
+                    className="w-full h-48 object-cover hover:scale-105 transition-transform duration-500"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300x200?text=No+Image'
+                    }}
+                  />
+                  <span className={`absolute top-2 right-2 ${item.status === 'lost' ? 'badge-lost' : 'badge-found'}`}>
+                    {item.status}
+                  </span>
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1 line-clamp-1">{item.item_name}</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">{item.description}</p>
+                <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400 mb-4">
+                  <div className="flex items-center gap-2">
+                    <MapPin size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
+                    {item.location}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Calendar size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
+                    {new Date(item.date_reported).toLocaleDateString()}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Tag size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
+                    {item.category || 'Uncategorized'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate({ 
+                    to: '/claim/claimForm', 
+                    search: { 
+                      id: item.report_id, 
+                      name: item.item_name, 
+                      location: item.location, 
+                      date: item.date_reported, 
+                      category: item.category 
+                    } 
+                  })}
+                  className="w-full btn-primary"
+                >
+                  Claim Item
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+│   ├── index.tsx
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { FileText, Search, ArrowRight, Sparkles } from 'lucide-react'
+
+export const Route = createFileRoute('/')({
+  component: Home,
+})
+
+function Home() {
+  const navigate = useNavigate()
+
+  return (
+    <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center px-4 py-12">
+      <div className="text-center max-w-4xl mx-auto">
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#0217f7]/10 dark:bg-[#f5e102]/10 border border-[#0217f7]/20 mb-8">
+          <Sparkles size={16} className="text-[#f5e102]" />
+          <span className="text-sm font-medium text-[#0217f7] dark:text-[#f5e102]">
+            Smart Lost & Found System
+          </span>
+        </div>
+
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6">
+          <span className="block text-gray-900 dark:text-white mb-2">
+            Finding and Locating
+          </span>
+          <span className="text-gradient">Lost Items Made Simple</span>
+        </h1>
+
+        <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto mb-12">
+          Report lost items, find what you've misplaced, and connect with finders 
+          using our AI-powered matching system.
+        </p>
+
+        <div className="grid sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
+          <button
+            onClick={() => navigate({ to: '/report' })}
+            className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0217f7] to-[#010bb3] p-8 text-left transition-all hover:shadow-2xl hover:-translate-y-2"
+          >
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#f5e102]/20 rounded-full blur-2xl transform translate-x-16 -translate-y-16" />
+            <FileText size={32} className="text-[#f5e102] mb-4" />
+            <h3 className="text-xl font-bold text-white mb-2">Report Item</h3>
+            <p className="text-blue-100 text-sm mb-4">Lost something? Let us help you find it.</p>
+            <div className="flex items-center text-[#f5e102] font-semibold">
+              Get Started <ArrowRight size={18} className="ml-2" />
+            </div>
+          </button>
+
+          <button
+            onClick={() => navigate({ to: '/claim' })}
+            className="group relative overflow-hidden rounded-2xl bg-white dark:bg-[#1e1e2e] border-2 border-[#0217f7]/20 dark:border-[#f5e102]/20 p-8 text-left transition-all hover:shadow-2xl hover:-translate-y-2"
+          >
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#f5e102]/30 rounded-full blur-2xl transform translate-x-16 -translate-y-16" />
+            <Search size={32} className="text-[#0217f7] dark:text-[#f5e102] mb-4" />
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Find Item</h3>
+            <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">Browse reported items and claim yours.</p>
+            <div className="flex items-center text-[#0217f7] dark:text-[#f5e102] font-semibold">
+              Browse Items <ArrowRight size={18} className="ml-2" />
+            </div>
+          </button>
+        </div>
+
+        <div className="mt-16 grid grid-cols-3 gap-8">
+          {[
+            { value: '267', label: 'Items Found' },
+            { value: '90%', label: 'Success Rate' },
+            { value: '24h', label: 'Avg. Response' },
+          ].map((stat) => (
+            <div key={stat.label} className="text-center">
+              <div className="text-3xl sm:text-4xl font-bold text-[#0217f7] dark:text-[#f5e102] mb-1">
+                {stat.value}
+              </div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+│   ├── report.tsx
+import { createFileRoute } from '@tanstack/react-router'
+import ReportForm from '../components/ReportForm'
+
+export const Route = createFileRoute('/report')({
+  component: ReportPage,
+})
+
+function ReportPage() {
+  return (
+    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-2">
+            Report an <span className="text-gradient">Item</span>
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Help us reunite lost items with their owners
+          </p>
+        </div>
+        <ReportForm />
+      </div>
+    </div>
+  )
+}
+│   └── __root.tsx
+import { createRootRoute, Outlet } from '@tanstack/react-router'
+import { TanStackRouterDevtools } from '@tanstack/router-devtools'
+import { ThemeProvider } from '../context/ThemeContext'
+import Header from '../components/Header'
+
+export const Route = createRootRoute({
+  component: RootComponent,
+})
+
+function RootComponent() {
+  return (
+    <ThemeProvider>
+      <div className="min-h-screen grid-pattern transition-colors duration-300">
+        <Header />
+        <main>
+          <Outlet />
+        </main>
+        {process.env.NODE_ENV === 'development' && <TanStackRouterDevtools />}
+      </div>
+    </ThemeProvider>
+  )
+}
+├── routeTree.gen.ts
+├── styles.css
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #0217f7;
+  --color-primary-dark: #010bb3;
+  --color-accent: #f5e102;
+  --color-accent-dark: #dcc702;
+  --color-dark-bg: #0a0a0f;
+  --color-dark-surface: #12121a;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-gray-200, #e5e7eb);
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: #111827;
+    background: linear-gradient(135deg, #f0f4ff 0%, #ffffff 50%, #fefce8 100%);
+    min-height: 100vh;
+    transition: background 0.3s ease, color 0.3s ease;
+  }
+  
+  .dark body {
+    color: #f1f5f9;
+    background: linear-gradient(135deg, #0a0a0f 0%, #12121a 50%, #1a1a2e 100%);
+  }
+  
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #0217f7;
+    border-radius: 4px;
+  }
+  
+  .dark ::-webkit-scrollbar-thumb {
+    background: #f5e102;
+  }
+}
+
+@layer components {
+  .glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px rgba(2, 23, 247, 0.1);
+  }
+  
+  .dark .glass-card {
+    background: rgba(18, 18, 26, 0.8);
+    border: 1px solid rgba(245, 225, 2, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  }
+  
+  .btn-primary {
+    background: linear-gradient(135deg, #0217f7 0%, #010bb3 100%);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(2, 23, 247, 0.3);
+  }
+  
+  .btn-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(2, 23, 247, 0.4);
+  }
+  
+  .btn-secondary {
+    background: white;
+    color: #0217f7;
+    border: 2px solid #0217f7;
+    padding: 0.75rem 1.5rem;
+    border-radius: 1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+  }
+  
+  .btn-secondary:hover {
+    background: #0217f7;
+    color: white;
+    transform: translateY(-3px);
+  }
+  
+  .dark .btn-secondary {
+    color: #f5e102;
+    border-color: #f5e102;
+    background: transparent;
+  }
+  
+  .dark .btn-secondary:hover {
+    background: #f5e102;
+    color: #0a0a0f;
+  }
+  
+  .input-field {
+    width: 100%;
+    padding: 0.875rem 1rem;
+    font-size: 0.9375rem;
+    background: rgba(255, 255, 255, 0.8);
+    border: 2px solid #e5e7eb;
+    border-radius: 0.75rem;
+    transition: all 0.3s ease;
+  }
+  
+  .dark .input-field {
+    background: rgba(18, 18, 26, 0.8);
+    border-color: #2e2e3e;
+    color: #f1f5f9;
+  }
+  
+  .input-field:focus {
+    outline: none;
+    border-color: #0217f7;
+    box-shadow: 0 0 0 4px rgba(2, 23, 247, 0.15);
+  }
+  
+  .card {
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 1.25rem;
+    border: 1px solid rgba(2, 23, 247, 0.1);
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(2, 23, 247, 0.08);
+    transition: all 0.4s ease;
+  }
+  
+  .card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 20px 40px rgba(2, 23, 247, 0.15);
+    border-color: rgba(2, 23, 247, 0.2);
+  }
+  
+  .dark .card {
+    background: rgba(18, 18, 26, 0.9);
+    border-color: rgba(245, 225, 2, 0.1);
+  }
+  
+  .badge-lost {
+    background: #fee2e2;
+    color: #dc2626;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.375rem 0.875rem;
+    border-radius: 9999px;
+  }
+  
+  .badge-found {
+    background: #d1fae5;
+    color: #059669;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.375rem 0.875rem;
+    border-radius: 9999px;
+  }
+  
+  .badge-yellow {
+    background: #f5e102;
+    color: #0217f7;
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 0.375rem 0.875rem;
+    border-radius: 9999px;
+  }
+  
+  .text-gradient {
+    background: linear-gradient(135deg, #0217f7 0%, #3b82f6 50%, #f5e102 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .dark .text-gradient {
+    background: linear-gradient(135deg, #f5e102 0%, #fff 50%, #0217f7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .grid-pattern {
+    background-image: 
+      linear-gradient(rgba(2, 23, 247, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(2, 23, 247, 0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+  }
+  
+  .dark .grid-pattern {
+    background-image: 
+      linear-gradient(rgba(245, 225, 2, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245, 225, 2, 0.05) 1px, transparent 1px);
+  }
+}
+└── tailwind.config.js
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          DEFAULT: '#0217f7',
+          dark: '#010bb3',
+          light: '#e0e7ff',
+        },
+        accent: {
+          DEFAULT: '#f5e102',
+          dark: '#dcc702',
+        }
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
+    },
+  },
+  plugins: [],
+}

@@ -1,52 +1,72 @@
 from flask import Blueprint, jsonify
-from stats.services import *
-from auth.decorators import auth_required, admin_required
-from auth.services import log_user_activity
+from models.reports_model import Reports, db
+from models.pending_claims_model import PendingClaims
+from models.returns_model import Returns
+from sqlalchemy import func
 
-statistics_bp = Blueprint('statistics', __name__)
+stats_bp = Blueprint('stats', __name__)
 
-@statistics_bp.route('/user_statistics', methods=['GET'])
-@auth_required
-def user_statistics(current_user):
-    active_user_count = get_active_user_count()
-    registered_user_count = get_registered_user_count()
-    total_report_count = get_total_report_count()
-    total_claimed_success_count = get_total_claimed_success_count()
+@stats_bp.route('/dashboard', methods=['GET'])
+def get_dashboard_stats():
+    """Get statistics for admin dashboard."""
+    try:
+        # Total reports
+        total_reports = Reports.query.count()
+        
+        # Pending claims
+        pending_claims = PendingClaims.query.filter_by(status='pending').count()
+        
+        # Resolved/returned items
+        resolved = Returns.query.filter_by(status='returned').count()
+        
+        # Active users (unique claimants)
+        active_users = db.session.query(PendingClaims.student_number).distinct().count()
+        
+        # Reports by status
+        lost_reports = Reports.query.filter(Reports.status.like('%lost%')).count()
+        found_reports = Reports.query.filter(Reports.status.like('%found%')).count()
+        published_reports = Reports.query.filter(Reports.status.startswith('published')).count()
+        
+        # Recent activity (last 7 days)
+        from datetime import datetime, timedelta
+        last_week = datetime.utcnow() - timedelta(days=7)
+        recent_reports = Reports.query.filter(Reports.date_reported >= last_week).count()
+        recent_claims = PendingClaims.query.filter(PendingClaims.date_claimed >= last_week).count()
+        
+        return jsonify({
+            "stats": {
+                "total_reports": total_reports,
+                "pending_claims": pending_claims,
+                "resolved": resolved,
+                "active_users": active_users,
+                "lost_reports": lost_reports,
+                "found_reports": found_reports,
+                "published_reports": published_reports,
+                "recent_reports": recent_reports,
+                "recent_claims": recent_claims
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    summary = {
-        'active_user_count': active_user_count,
-        'registered_user_count': registered_user_count,
-        'total_report_count': total_report_count,
-        'total_claimed_success_count': total_claimed_success_count
-    }
 
-    log_user_activity(current_user.user_id, "view_user_statistics", "User viewed user statistics")
-
-    return jsonify(summary), 200
-
-
-@statistics_bp.route('/admin_statistics', methods=['GET'])
-@auth_required
-@admin_required
-def admin_statistics(current_user):
-    active_user_count = get_active_user_count()
-    registered_user_count = get_registered_user_count()
-    total_report_count = get_total_report_count()
-    total_claimed_success_count = get_total_claimed_success_count()
-    total_logged_in_count_per_day = get_how_many_user_logged_in_per_day(current_user.user_id)
-    total_logged_in_count_per_week = get_how_many_user_logged_in_per_week(current_user.user_id)
-    total_logged_in_count_per_month = get_how_many_user_logged_in_per_month(current_user.user_id)
-    total_logged_in_count_per_year = get_how_many_user_logged_in_per_year(current_user.user_id)
-
-    summary = {
-        'active_user_count': active_user_count,
-        'registered_user_count': registered_user_count,
-        'total_report_count': total_report_count,
-        'total_claimed_success_count': total_claimed_success_count,
-        'total_logged_in_count_per_day': total_logged_in_count_per_day,
-        'total_logged_in_count_per_week': total_logged_in_count_per_week,
-        'total_logged_in_count_per_month': total_logged_in_count_per_month,
-        'total_logged_in_count_per_year': total_logged_in_count_per_year
-    }
-
-    return jsonify(summary), 200
+@stats_bp.route('/reports-by-category', methods=['GET'])
+def get_reports_by_category():
+    """Get report counts by category."""
+    try:
+        from sqlalchemy import func
+        
+        results = db.session.query(
+            Reports.category,
+            func.count(Reports.report_id)
+        ).group_by(Reports.category).all()
+        
+        return jsonify({
+            "categories": [
+                {"name": cat or "Uncategorized", "count": count}
+                for cat, count in results
+            ]
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

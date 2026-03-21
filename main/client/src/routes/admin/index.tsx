@@ -1,6 +1,9 @@
+// client/src/routes/admin/index.tsx
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import { Mail, Lock, Eye, Shield } from 'lucide-react'
+import { useMutation } from '@tanstack/react-query'
+import { Mail, Lock, Eye, Shield, Loader2 } from 'lucide-react'
+import { authApi } from '../../services/api'
 
 export const Route = createFileRoute('/admin/')({
   component: AdminLogin,
@@ -10,30 +13,27 @@ function AdminLogin() {
   const navigate = useNavigate()
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const loginMutation = useMutation({
+    mutationFn: () => authApi.login(form.email, form.password),
+    onSuccess: (data) => {
+      if (data.access_token) {
+        localStorage.setItem('admin_token', data.access_token)
+        navigate({ to: '/admin/dashboard' })
+      } else {
+        setError(data.error || 'Invalid credentials')
+      }
+    },
+    onError: (err: any) => {
+      setError(err.message || 'Login failed. Please try again.')
+    },
+  })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
-    
-    try {
-      const res = await fetch('http://localhost:5000/auth/admin-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-      
-      const data = await res.json()
-      
-      if (!res.ok) throw new Error(data.message)
-      
-      localStorage.setItem('admin_token', data.access_token)
-      navigate({ to: '/admin/dashboard' })
-    } catch {
-      alert('Invalid credentials')
-    } finally {
-      setIsLoading(false)
-    }
+    setError('')
+    loginMutation.mutate()
   }
 
   return (
@@ -46,6 +46,12 @@ function AdminLogin() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Login</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm">FLRT Management System</p>
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
@@ -85,8 +91,16 @@ function AdminLogin() {
             </div>
           </div>
 
-          <button type="submit" disabled={isLoading} className="w-full btn-primary flex items-center justify-center gap-2 py-3">
-            {isLoading ? 'Logging in...' : 'Login to FLRT'}
+          <button 
+            type="submit" 
+            disabled={loginMutation.isPending}
+            className="w-full btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-50"
+          >
+            {loginMutation.isPending ? (
+              <><Loader2 size={20} className="animate-spin" /> Logging in...</>
+            ) : (
+              'Login to FLRT'
+            )}
           </button>
         </form>
       </div>

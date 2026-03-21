@@ -1,6 +1,9 @@
+// client/src/routes/claim/index.tsx
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Search, MapPin, Calendar, Tag, RefreshCw, Loader2 } from 'lucide-react'
+import { reportsApi } from '../../services/api'
 
 interface LostItem {
   report_id: string
@@ -19,45 +22,20 @@ export const Route = createFileRoute('/claim/')({
 
 function ClaimantPage() {
   const navigate = useNavigate()
-  const [items, setItems] = useState<LostItem[]>([])
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [type, setType] = useState('All')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
 
-  const fetchPublishedReports = async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const response = await fetch('http://localhost:5000/reports/claimable-reports')
-      if (!response.ok) throw new Error('Failed to fetch')
-      
-      const data = await response.json()
-      // Normalize status to 'lost' or 'found' for display
-      const normalized = (data.reports || []).map((item: any) => ({
-        ...item,
-        status: item.status?.includes('lost') ? 'lost' : 'found'
-      }))
-      setItems(normalized)
-    } catch (err) {
-      setError('Failed to load items. Please try again.')
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data: itemsData, isLoading, error } = useQuery({
+    queryKey: ['claimable-reports'],
+    queryFn: reportsApi.getClaimable,
+    refetchInterval: 30000,
+  })
 
-  useEffect(() => {
-    fetchPublishedReports()
-    
-    // Refresh when localStorage changes (when admin publishes)
-    const handleStorage = () => fetchPublishedReports()
-    window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
-  }, [])
+  const items = itemsData?.reports || []
 
-  const filtered = items.filter(item => {
+  const filtered = items.filter((item: LostItem) => {
     const matchesSearch = item.item_name?.toLowerCase().includes(search.toLowerCase()) || 
                          item.description?.toLowerCase().includes(search.toLowerCase())
     const matchesCategory = category === 'All' || item.category === category
@@ -81,7 +59,6 @@ function ClaimantPage() {
           <p className="text-gray-600 dark:text-gray-400">Find and claim your lost items</p>
         </div>
 
-        {/* Filters */}
         <div className="glass-card rounded-2xl p-4 mb-6">
           <div className="grid sm:grid-cols-4 gap-4">
             <div className="relative sm:col-span-2">
@@ -94,44 +71,49 @@ function ClaimantPage() {
                 className="input-field pl-10"
               />
             </div>
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className="input-field">
-              <option>All Categories</option>
-              <option>Electronics</option>
-              <option>Accessories</option>
-              <option>Bags</option>
-              <option>Books</option>
-              <option>Stationery</option>
+            <select 
+              value={category} 
+              onChange={(e) => setCategory(e.target.value)}
+              className="input-field"
+            >
+              <option value="All">All Categories</option>
+              <option value="Electronics">Electronics</option>
+              <option value="Accessories">Accessories</option>
+              <option value="Bags">Bags</option>
+              <option value="Books">Books</option>
+              <option value="Stationery">Stationery</option>
             </select>
-            <select value={type} onChange={(e) => setType(e.target.value)} className="input-field">
-              <option>All Types</option>
-              <option>Lost</option>
-              <option>Found</option>
+            <select 
+              value={type} 
+              onChange={(e) => setType(e.target.value)}
+              className="input-field"
+            >
+              <option value="All">All Types</option>
+              <option value="Lost">Lost</option>
+              <option value="Found">Found</option>
             </select>
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex justify-between items-center mb-4">
           <span className="text-gray-600 dark:text-gray-400">{filtered.length} items found</span>
           <button
-            onClick={fetchPublishedReports}
-            disabled={loading}
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['claimable-reports'] })}
+            disabled={isLoading}
             className="flex items-center gap-2 px-4 py-2 text-[#0217f7] dark:text-[#f5e102] border border-[#0217f7] dark:border-[#f5e102] rounded-lg hover:bg-[#0217f7] hover:text-white dark:hover:bg-[#f5e102] dark:hover:text-[#0217f7] transition-all disabled:opacity-50"
           >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
             Refresh
           </button>
         </div>
 
-        {/* Error */}
         {error && (
           <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-xl text-center">
-            {error}
+            Failed to load items. Please try again.
           </div>
         )}
 
-        {/* Loading */}
-        {loading ? (
+        {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 size={48} className="animate-spin text-[#0217f7] dark:text-[#f5e102]" />
           </div>
@@ -141,7 +123,7 @@ function ClaimantPage() {
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((item) => (
+            {filtered.map((item: LostItem) => (
               <div key={item.report_id} className="card">
                 <div className="relative mb-4 overflow-hidden rounded-xl">
                   <img 
