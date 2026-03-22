@@ -1,9 +1,10 @@
 // client/src/routes/admin/dashboard/index.tsx
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { Box, Clock, CheckCircle, TrendingUp, Search, LogOut, Loader2, RefreshCw } from 'lucide-react'
-import { statsApi, authApi } from '../../../services/api'
+import { statsApi, authApi, siftApi } from '../../../services/api'
+import { requireAdminAuth } from '../../../utils/adminAuth'
 
 interface DashboardStats {
   total_reports: number
@@ -26,12 +27,16 @@ interface Report {
 }
 
 export const Route = createFileRoute('/admin/dashboard/')({
+  beforeLoad: () => {
+    requireAdminAuth()
+  },
   component: DashboardPage,
 })
 
 function DashboardPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [retrainMessage, setRetrainMessage] = useState('')
 
   // Fetch dashboard stats with auto-refresh every 30 seconds
   const { 
@@ -122,6 +127,18 @@ function DashboardPage() {
     refetchReports()
   }
 
+  const retrainMutation = useMutation({
+    mutationFn: (status: 'lost' | 'found') => siftApi.retrainByStatus(status),
+    onSuccess: (_data, status) => {
+      setRetrainMessage(`Retrained ${status} dataset successfully.`)
+      setTimeout(() => setRetrainMessage(''), 3000)
+    },
+    onError: (error: any) => {
+      setRetrainMessage(error?.message || 'Failed to retrain dataset')
+      setTimeout(() => setRetrainMessage(''), 4000)
+    },
+  })
+
   // Listen for storage events to refresh data
   useEffect(() => {
     const handleStorage = () => {
@@ -133,12 +150,28 @@ function DashboardPage() {
   }, [queryClient])
 
   return (
-    <div className="min-h-screen p-6">
+    <div className="min-h-screen p-3 sm:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header with Logout and Refresh */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <button
+              onClick={() => retrainMutation.mutate('lost')}
+              disabled={retrainMutation.isPending}
+              className="px-2.5 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+              title="Retrain lost dataset"
+            >
+              {retrainMutation.isPending ? 'Working...' : 'Retrain Lost DB'}
+            </button>
+            <button
+              onClick={() => retrainMutation.mutate('found')}
+              disabled={retrainMutation.isPending}
+              className="px-2.5 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+              title="Retrain found dataset"
+            >
+              {retrainMutation.isPending ? 'Working...' : 'Retrain Found DB'}
+            </button>
             <button
               onClick={handleManualRefresh}
               disabled={statsLoading || reportsLoading}
@@ -156,6 +189,9 @@ function DashboardPage() {
             </button>
           </div>
         </div>
+        {retrainMessage && (
+          <p className="text-xs text-[#0217f7] dark:text-[#f5e102] -mt-3">{retrainMessage}</p>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -180,7 +216,7 @@ function DashboardPage() {
         </div>
 
         {/* Additional Stats Row */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="glass-card rounded-xl p-4 text-center">
             <p className="text-sm text-gray-500 dark:text-gray-400">Lost Items</p>
             <p className="text-xl font-bold text-red-600">{stats.lost_reports}</p>

@@ -4,6 +4,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, CheckCircle, Eye, Loader2, Phone, Mail, MessageSquare, CheckCheck, XCircle } from 'lucide-react'
 import { foundItemsApi } from '../../../services/api'
+import { requireAdminAuth } from '../../../utils/adminAuth'
+
+const ITEMS_PER_PAGE = 8
 
 interface FoundItem {
   found_item_id: number
@@ -24,6 +27,9 @@ interface FoundItem {
 }
 
 export const Route = createFileRoute('/admin/dashboard/found-items')({
+  beforeLoad: () => {
+    requireAdminAuth()
+  },
   component: FoundItemsPage,
 })
 
@@ -35,6 +41,7 @@ function FoundItemsPage() {
   const [message, setMessage] = useState('')
   const [adminNotes, setAdminNotes] = useState('')
   const [isContacting, setIsContacting] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
 
   const { data: itemsData, isLoading } = useQuery({
     queryKey: ['pending-found-items'],
@@ -43,6 +50,10 @@ function FoundItemsPage() {
   })
 
   const items: FoundItem[] = itemsData?.found_items || []
+  const totalPages = Math.max(1, Math.ceil(items.length / ITEMS_PER_PAGE))
+  const currentPageSafe = Math.min(currentPage, totalPages)
+  const startIndex = (currentPageSafe - 1) * ITEMS_PER_PAGE
+  const paginatedItems = items.slice(startIndex, startIndex + ITEMS_PER_PAGE)
 
   const contactMutation = useMutation({
     mutationFn: ({ foundItemId, notes }: { foundItemId: number; notes: string }) =>
@@ -120,12 +131,27 @@ function FoundItemsPage() {
 
   const getImageUrl = (imagePath: string) => {
     if (!imagePath) return 'https://via.placeholder.com/400x300?text=No+Image'
+
+    if (imagePath.includes('drive.google.com')) {
+      const fileIdFromPath = imagePath.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1]
+      let fileIdFromQuery: string | null = null
+      try {
+        fileIdFromQuery = new URL(imagePath).searchParams.get('id')
+      } catch {
+        fileIdFromQuery = null
+      }
+      const fileId = fileIdFromPath || fileIdFromQuery
+      if (fileId) {
+        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`
+      }
+    }
+
     if (imagePath.startsWith('http')) return imagePath
     return `http://192.168.1.131:5000/found-items/images/${encodeURIComponent(imagePath)}`
   }
 
   return (
-    <div className="min-h-screen p-6">
+    <div className="min-h-screen p-3 sm:p-6">
       <div className="max-w-7xl mx-auto">
         <div className="glass-card rounded-2xl overflow-hidden">
           {/* Navigation Tabs */}
@@ -155,14 +181,14 @@ function FoundItemsPage() {
 
           {/* Header Section */}
           <div className="p-6 border-b border-gray-200 dark:border-gray-800">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Found Items</h1>
                 <p className="text-gray-500 dark:text-gray-400 mt-1">
                   Manage items found by community members seeking to return them
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 self-start sm:self-auto">
                 <span className="bg-[#f5e102] text-[#0217f7] px-3 py-1 rounded-full text-sm font-bold whitespace-nowrap">
                   {items.filter((i: FoundItem) => i.status === 'pending').length} Pending
                 </span>
@@ -183,7 +209,7 @@ function FoundItemsPage() {
             </div>
           ) : (
             <div className="grid gap-4 p-6">
-              {items.map((item: FoundItem) => (
+              {paginatedItems.map((item: FoundItem) => (
                 <div 
                   key={item.found_item_id} 
                   className="bg-white dark:bg-[#1e1e2e] rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow"
@@ -266,6 +292,33 @@ function FoundItemsPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {!isLoading && items.length > 0 && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border-t border-gray-200 dark:border-gray-800">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, items.length)} of {items.length} found items
+              </p>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPageSafe === 1}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-gray-600 dark:text-gray-300">
+                  Page {currentPageSafe} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPageSafe === totalPages}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>

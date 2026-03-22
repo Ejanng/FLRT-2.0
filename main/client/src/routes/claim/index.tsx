@@ -5,6 +5,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Search, MapPin, Calendar, Tag, RefreshCw, Loader2 } from 'lucide-react'
 import { reportsApi } from '../../services/api'
 
+const ITEMS_PER_PAGE = 9
+
 interface LostItem {
   report_id: string
   item_name: string
@@ -26,6 +28,7 @@ function ClaimantPage() {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [type, setType] = useState('All')
+  const [currentPage, setCurrentPage] = useState(1)
 
   const { data: itemsData, isLoading, error } = useQuery({
     queryKey: ['claimable-reports'],
@@ -43,10 +46,13 @@ function ClaimantPage() {
     return matchesSearch && matchesCategory && matchesType
   })
 
-  const getImageUrl = (imagePath: string) => {
-    if (!imagePath) return 'https://via.placeholder.com/300x200?text=No+Image'
-    if (imagePath.startsWith('http')) return imagePath
-    return `http://192.168.1.131:5000/reports/images/${encodeURIComponent(imagePath)}`
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
+  const currentPageSafe = Math.min(currentPage, totalPages)
+  const startIndex = (currentPageSafe - 1) * ITEMS_PER_PAGE
+  const paginatedItems = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+
+  const getDummyImageUrl = (seed: string) => {
+    return `https://picsum.photos/seed/flrt-${encodeURIComponent(seed)}/300/200`
   }
 
   return (
@@ -67,13 +73,19 @@ function ClaimantPage() {
                 type="text"
                 placeholder="Search items..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  setCurrentPage(1)
+                }}
                 className="input-field pl-10"
               />
             </div>
             <select 
               value={category} 
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => {
+                setCategory(e.target.value)
+                setCurrentPage(1)
+              }}
               className="input-field"
             >
               <option value="All">All Categories</option>
@@ -85,7 +97,10 @@ function ClaimantPage() {
             </select>
             <select 
               value={type} 
-              onChange={(e) => setType(e.target.value)}
+              onChange={(e) => {
+                setType(e.target.value)
+                setCurrentPage(1)
+              }}
               className="input-field"
             >
               <option value="All">All Types</option>
@@ -122,41 +137,56 @@ function ClaimantPage() {
             No items found. Check back later!
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((item: LostItem) => (
-              <div key={item.report_id} className="card">
-                <div className="relative mb-4 overflow-hidden rounded-xl">
-                  <img 
-                    src={getImageUrl(item.image)} 
-                    alt={item.item_name} 
-                    className="w-full h-48 object-cover hover:scale-105 transition-transform duration-500"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300x200?text=No+Image'
-                    }}
-                  />
-                  <span className={`absolute top-2 right-2 ${item.status === 'lost' ? 'badge-lost' : 'badge-found'}`}>
-                    {item.status}
-                  </span>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1 line-clamp-1">{item.item_name}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">{item.description}</p>
-                <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400 mb-4">
-                  <div className="flex items-center gap-2">
-                    <MapPin size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
-                    {item.location}
+          <div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {paginatedItems.map((item: LostItem) => (
+                <div key={item.report_id} className="card">
+                  <div className="relative mb-4 overflow-hidden rounded-xl">
+                    <img 
+                      src={getDummyImageUrl(item.report_id)}
+                      alt={item.item_name} 
+                      className="w-full h-48 object-cover hover:scale-105 transition-transform duration-500"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = getDummyImageUrl(`${item.report_id}-fallback`)
+                      }}
+                    />
+                    <span className={`absolute top-2 right-2 ${item.status === 'lost' ? 'badge-lost' : 'badge-found'}`}>
+                      {item.status}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
-                    {new Date(item.date_reported).toLocaleDateString()}
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1 line-clamp-1">{item.item_name}</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">{item.description}</p>
+                  <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400 mb-4">
+                    <div className="flex items-center gap-2">
+                      <MapPin size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
+                      {item.location}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
+                      {new Date(item.date_reported).toLocaleDateString()}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Tag size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
+                      {item.category || 'Uncategorized'}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Tag size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
-                    {item.category || 'Uncategorized'}
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    if (item.status === 'lost') {
+                  <button
+                    onClick={() => {
+                      if (item.status === 'lost') {
+                        navigate({
+                          to: '/claim/claimForm',
+                          search: {
+                            id: item.report_id,
+                            name: item.item_name,
+                            location: item.location,
+                            date: item.date_reported,
+                            category: item.category,
+                            mode: 'found',
+                          },
+                        })
+                        return
+                      }
+
                       navigate({
                         to: '/claim/claimForm',
                         search: {
@@ -165,29 +195,41 @@ function ClaimantPage() {
                           location: item.location,
                           date: item.date_reported,
                           category: item.category,
-                          mode: 'found',
                         },
                       })
-                      return
-                    }
+                    }}
+                    className="w-full btn-primary"
+                  >
+                    {item.status === 'lost' ? 'I Found This Item' : 'Claim Item'}
+                  </button>
+                </div>
+              ))}
+            </div>
 
-                    navigate({
-                      to: '/claim/claimForm',
-                      search: {
-                        id: item.report_id,
-                        name: item.item_name,
-                        location: item.location,
-                        date: item.date_reported,
-                        category: item.category,
-                      },
-                    })
-                  }}
-                  className="w-full btn-primary"
+            <div className="flex items-center justify-between mt-6">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, filtered.length)} of {filtered.length} items
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPageSafe === 1}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {item.status === 'lost' ? 'I Found This Item' : 'Claim Item'}
+                  Previous
+                </button>
+                <span className="text-sm text-gray-600 dark:text-gray-300">
+                  Page {currentPageSafe} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPageSafe === totalPages}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
                 </button>
               </div>
-            ))}
+            </div>
           </div>
         )}
       </div>

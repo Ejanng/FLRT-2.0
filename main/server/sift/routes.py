@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
-from sift.services import train_model, process_image
+from sift.services import train_model, process_image, retrain_model_for_status
 from core.config import Config
+from auth.decorators import auth_required, admin_required
 
 sift_bp = Blueprint('sift', __name__)
 
@@ -26,4 +27,24 @@ def process_image_route():
     
     result = process_image(image_url)
     return jsonify(result)
+
+
+@sift_bp.route('/admin/retrain', methods=['POST'])
+@auth_required
+@admin_required
+def retrain_status_dataset(current_user):
+    data = request.get_json() or {}
+    status = (data.get('status') or '').strip().lower()
+
+    if status not in ('lost', 'found'):
+        return jsonify({"error": "status must be either 'lost' or 'found'"}), 400
+
+    result = retrain_model_for_status(status)
+    if not result.get('success'):
+        return jsonify(result), 500
+
+    return jsonify({
+        "message": f"Retrained {status} dataset successfully",
+        "result": result
+    }), 200
 

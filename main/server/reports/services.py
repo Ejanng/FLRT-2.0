@@ -1,17 +1,19 @@
 from models.reports_model import Reports, db
 from models.pending_claims_model import PendingClaims
-from sift.services import process_image
+from models.found_items_model import FoundItems
+from sift.services import process_image_for_report
 from datetime import datetime, timezone
 
 def submit_report(data, image_url=None):
     """Create a new report."""
+    final_image_url = image_url or data.get('image')
     new_report = Reports(
         item_name=data.get('item_name'),
         description=data.get('description'),
         status=data.get('status'),
         location=data.get('location'),
         time=data.get('time') or None,
-        image=image_url,
+        image=final_image_url,
         category=data.get('category', 'Uncategorized'),
         date_reported=datetime.now(timezone.utc)
     )
@@ -24,8 +26,43 @@ def submit_report(data, image_url=None):
 def get_all_reports():
     """Get all reports for admin dashboard."""
     all_reports = Reports.query.order_by(Reports.date_reported.desc()).all()
+
+    report_ids = [report.report_id for report in all_reports]
+    found_items = FoundItems.query.filter(FoundItems.report_id.in_(report_ids)).all() if report_ids else []
+    found_item_map = {item.report_id: item for item in found_items}
+    pending_claims = PendingClaims.query.filter(PendingClaims.report_id.in_(report_ids)).all() if report_ids else []
+    claims_by_report = {}
+    for claim in pending_claims:
+        claims_by_report.setdefault(claim.report_id, []).append(claim)
+
+    formatted_reports = []
+    for report in all_reports:
+        payload = report.to_json()
+        linked_found_item = found_item_map.get(report.report_id)
+        report_claims = claims_by_report.get(report.report_id, [])
+        linked_pending_claim = next((c for c in report_claims if c.status == 'pending'), None)
+        if not linked_pending_claim and report_claims:
+            linked_pending_claim = report_claims[0]
+
+        payload['is_found_report'] = (report.status or '').strip().lower() in ('found', 'published_found')
+        if linked_found_item:
+            payload['finder_name'] = linked_found_item.finder_name
+            payload['finder_contact_info'] = linked_found_item.finder_contact_info
+            payload['finder_student_number'] = linked_found_item.finder_student_number
+            payload['coordination_status'] = linked_found_item.status
+            payload['coordination_notes'] = linked_found_item.admin_notes
+            payload['date_contacted'] = linked_found_item.date_contacted.isoformat() if linked_found_item.date_contacted else None
+        else:
+            payload['coordination_status'] = None
+
+        payload['public_match_link'] = linked_pending_claim.image if linked_pending_claim else None
+        payload['has_pending_claim'] = any(claim.status == 'pending' for claim in report_claims)
+        payload['pending_claim_status'] = linked_pending_claim.status if linked_pending_claim else None
+
+        formatted_reports.append(payload)
+
     return {
-        "reports": [report.to_json() for report in all_reports]
+        "reports": formatted_reports
     }
 
 def get_claimable_reports():
@@ -49,12 +86,18 @@ def get_claimable_reports():
         "reports": mapped_reports
     }
 
-def publish_report_to_claims(report_id):
+def publish_report_to_claims(report_id, category=None):
     """Publish a report to make it visible in claim page."""
     report = Reports.query.filter_by(report_id=report_id).first()
 
     if not report:
         return None, "Report not found"
+
+    if category is not None:
+        normalized_category = (category or '').strip()
+        if not normalized_category:
+            return None, "Category is required before publishing"
+        report.category = normalized_category
 
     # Already published
     if report.status in ('published_lost', 'published_found'):
@@ -65,6 +108,11 @@ def publish_report_to_claims(report_id):
     if current_status == 'lost':
         report.status = 'published_lost'
     elif current_status == 'found':
+        linked_found_item = FoundItems.query.filter_by(report_id=report_id).first()
+        if not linked_found_item:
+            return None, "Found report must have a coordination record before publishing"
+        if linked_found_item.status != 'verified':
+            return None, "Found report must be coordinated and verified with finder before publishing"
         report.status = 'published_found'
     else:
         # Default to published_found if status is unclear
@@ -108,7 +156,8 @@ def process_report_with_image_url(image_url, data, new_report):
     """
     Process lost item report image and create pending claim if match found.
     """
-    result = process_image(image_url)
+    report_status = data.get('status')
+    result = process_image_for_report(image_url, report_status)
 
     if not result:
         return None, "Image processing failed", "Error"

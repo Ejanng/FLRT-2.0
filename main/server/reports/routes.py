@@ -9,6 +9,8 @@ from reports.services import (
     update_report_status,
     process_report_with_image_url
 )
+from found_items.services import create_found_item
+from sift.services import upload_report_image_by_status
 from auth.decorators import auth_required, admin_required
 import os
 
@@ -41,7 +43,18 @@ def report_item():
             # Save to temp location
             temp_path = f"/tmp/{image_file.filename}"
             image_file.save(temp_path)
-            image_url = temp_path
+
+            # Upload to Google Drive first (UI data source should use this)
+            upload_result = upload_report_image_by_status(
+                temp_path,
+                status,
+                filename_prefix=item_name or 'report_image'
+            )
+            if upload_result.get('success'):
+                image_url = upload_result.get('gdrive_view_link')
+            else:
+                print(f"GDrive upload failed, using temp path. Error: {upload_result.get('error')}")
+                image_url = temp_path
         
         # Create report data dict
         data = {
@@ -63,7 +76,24 @@ def report_item():
             return jsonify({"error": "Missing required fields"}), 400
         
         # Create the report
-        new_report = submit_report(data)
+        new_report = submit_report(data, image_url=image_url)
+
+        if status == 'found' and all([student_name, student_number, contact_info]):
+            try:
+                create_found_item(
+                    finder_name=student_name,
+                    finder_student_number=student_number,
+                    finder_contact_info=contact_info,
+                    item_name=item_name,
+                    item_description=description,
+                    item_location=location,
+                    category=category,
+                    date_found=date,
+                    image_path=image_url,
+                    report_id=new_report.report_id,
+                )
+            except Exception as found_item_error:
+                print(f"Failed to create linked found item record: {found_item_error}")
 
         # Process based on status
         if status in ('lost', 'found') and image_url:
@@ -135,11 +165,12 @@ def publish_report():
     """Publish a report to make it visible in claim page."""
     data = request.get_json()
     report_id = data.get('report_id')
+    category = data.get('category')
     
     if not report_id:
         return jsonify({"error": "Missing report_id"}), 400
     
-    report, error = publish_report_to_claims(report_id)
+    report, error = publish_report_to_claims(report_id, category)
     
     if error:
         return jsonify({"error": error}), 400

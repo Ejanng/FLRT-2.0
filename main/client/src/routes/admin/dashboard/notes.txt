@@ -1,2 +1,0 @@
-for the found reports, the user should also coordinate with the user who found the item before publishing the reports
-create the logic so for uploading the photo to the cloud upon reporting claiming and others

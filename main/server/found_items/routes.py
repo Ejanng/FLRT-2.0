@@ -7,7 +7,9 @@ from found_items.services import (
     get_found_item_by_id,
     create_found_item,
     contact_finder,
-    close_found_item
+    close_found_item,
+    contact_finder_by_report,
+    verify_found_item_by_report
 )
 from datetime import datetime, timezone
 import os
@@ -127,6 +129,45 @@ def contact_found_item(found_item_id):
             "found_item": result
         }), 200
         
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@found_items_bp.route('/report/<int:report_id>/contact', methods=['POST'])
+def contact_found_item_by_report(report_id):
+    """Contact finder for a found report by report ID."""
+    try:
+        data = request.get_json() or {}
+        admin_notes = data.get('admin_notes')
+
+        if not admin_notes:
+            return jsonify({"error": "Admin notes are required"}), 400
+
+        result = contact_finder_by_report(report_id, admin_notes)
+        if not result:
+            return jsonify({"error": "Found report coordination record not found"}), 404
+
+        return jsonify({
+            "message": "Finder contacted successfully",
+            "found_item": result
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@found_items_bp.route('/report/<int:report_id>/verify', methods=['POST'])
+def verify_found_item_report(report_id):
+    """Mark found report coordination as verified by report ID."""
+    try:
+        data = request.get_json() or {}
+        admin_notes = data.get('admin_notes')
+
+        result = verify_found_item_by_report(report_id, admin_notes)
+        if not result:
+            return jsonify({"error": "Found report coordination record not found"}), 404
+
+        return jsonify({
+            "message": "Found report coordination verified",
+            "found_item": result
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

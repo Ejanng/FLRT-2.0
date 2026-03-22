@@ -142,7 +142,7 @@ export default function FoundForm({ reportId, itemName, location, date, category
                 type="text"
                 value={formData.finderStudentNumber}
                 onChange={(e) => setFormData((prev) => ({ ...prev, finderStudentNumber: e.target.value }))}
-                placeholder="2024-12345"
+                placeholder="23-140123"
                 className={`input-field ${errors.finderStudentNumber ? 'border-red-500' : ''}`}
               />
               {errors.finderStudentNumber && <p className="text-red-500 text-xs mt-1">{errors.finderStudentNumber}</p>}
@@ -157,7 +157,7 @@ export default function FoundForm({ reportId, itemName, location, date, category
                 type="text"
                 value={formData.finderContact}
                 onChange={(e) => setFormData((prev) => ({ ...prev, finderContact: e.target.value }))}
-                placeholder="you@email.com or 09123456789"
+                placeholder="juandelacruz@gmail.com or 09123456789"
                 className={`input-field ${errors.finderContact ? 'border-red-500' : ''}`}
               />
               {errors.finderContact && <p className="text-red-500 text-xs mt-1">{errors.finderContact}</p>}

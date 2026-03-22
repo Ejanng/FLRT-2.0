@@ -10,13 +10,14 @@ class FoundItems(db.Model):
     __tablename__ = 'found_items'
     __table_args__ = (
         db.CheckConstraint(
-            "status IN ('pending', 'contacted', 'returned', 'cancelled')",
+            "status IN ('pending', 'contacted', 'verified', 'returned', 'cancelled')",
             name='ck_found_items_status_valid',
         ),
         db.Index('ix_found_items_status', 'status'),
         db.Index('ix_found_items_date_submitted', 'date_submitted'),
         db.Index('ix_found_items_student_number', 'finder_student_number'),
         db.Index('ix_found_items_admin_id', 'admin_id'),
+        db.Index('ix_found_items_report_id', 'report_id'),
     )
 
     found_item_id = db.Column(db.Integer, primary_key=True)
@@ -33,6 +34,9 @@ class FoundItems(db.Model):
     date_found = db.Column(db.Date, nullable=False)  # Date the item was found
     category = db.Column(db.String(50), nullable=True)  # Electronics, Accessories, Bags, Books, Stationery
     image = db.Column(db.String(255), nullable=True)  # Photo of found item
+
+    # Optional linkage to report submission
+    report_id = db.Column(db.Integer, db.ForeignKey('reports.report_id', ondelete='SET NULL'), nullable=True)
     
     # Status and tracking
     status = db.Column(db.String(20), nullable=False, default='pending')  # pending, contacted, returned, cancelled
@@ -50,6 +54,7 @@ class FoundItems(db.Model):
     def to_json(self):
         return {
             'found_item_id': self.found_item_id,
+            'report_id': self.report_id,
             'finder_name': self.finder_name,
             'finder_student_number': self.finder_student_number,
             'finder_contact_info': self.finder_contact_info,

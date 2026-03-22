@@ -16,7 +16,7 @@ Update your test request to include student information:
     "time": "12:00",
     "image": "https://drive.google.com/file/d/1oDnAuXpacSEt4EntxJA_JGH3oHMQoI43/view?usp=drive_link",
     "student_name": "John Doe",
-    "student_number": "2024-12345", 
+    "student_number": "23-140123", 
     "contact_info": "john@example.com"
 }
 ```

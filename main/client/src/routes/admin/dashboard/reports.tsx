@@ -2,8 +2,11 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, X, CheckCircle, XCircle, Eye, Loader2, Check, Trash2 } from 'lucide-react'
+import { Search, X, CheckCircle, XCircle, Eye, Loader2, Check, Trash2, MessageSquare } from 'lucide-react'
 import { reportsApi } from '../../../services/api'
+import { requireAdminAuth } from '../../../utils/adminAuth'
+
+const ITEMS_PER_PAGE = 10
 
 interface Report {
   report_id: string
@@ -14,9 +17,20 @@ interface Report {
   status: string
   image?: string
   category?: string
+  finder_name?: string
+  finder_contact_info?: string
+  finder_student_number?: string
+  is_found_report?: boolean
+  coordination_status?: 'pending' | 'contacted' | 'verified'
+  public_match_link?: string | null
+  has_pending_claim?: boolean
+  pending_claim_status?: string | null
 }
 
 export const Route = createFileRoute('/admin/dashboard/reports')({
+  beforeLoad: () => {
+    requireAdminAuth()
+  },
   component: ReportsPage,
 })
 
@@ -26,16 +40,23 @@ function ReportsPage() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [message, setMessage] = useState('')
+  const [coordinationNotes, setCoordinationNotes] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
 
   const { data: reportsData, isLoading } = useQuery({
     queryKey: ['all-reports'],
     queryFn: reportsApi.getAll,
   })
 
-  const reports = reportsData?.reports || []
+  const reports = (reportsData?.reports || []).filter((report: Report) => !report.has_pending_claim)
+  const totalPages = Math.max(1, Math.ceil(reports.length / ITEMS_PER_PAGE))
+  const currentPageSafe = Math.min(currentPage, totalPages)
+  const startIndex = (currentPageSafe - 1) * ITEMS_PER_PAGE
+  const paginatedReports = reports.slice(startIndex, startIndex + ITEMS_PER_PAGE)
 
   const publishMutation = useMutation({
-    mutationFn: (reportId: number) => reportsApi.publish(reportId),
+    mutationFn: ({ reportId, category }: { reportId: number; category: string }) => reportsApi.publish(reportId, category),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-reports'] })
       queryClient.invalidateQueries({ queryKey: ['claimable-reports'] })
@@ -67,15 +88,74 @@ function ReportsPage() {
     },
   })
 
+  const contactFinderMutation = useMutation({
+    mutationFn: ({ reportId, notes }: { reportId: number; notes: string }) =>
+      reportsApi.contactFinderForFoundReport(reportId, notes),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['all-reports'] })
+      setSelectedReport(prev => prev ? { ...prev, coordination_status: 'contacted' } : null)
+      setCoordinationNotes('')
+      setMessage(`Finder contacted successfully for report #${variables.reportId}`)
+    },
+    onError: (error: any) => {
+      setMessage(error.message || 'Failed to contact finder')
+    },
+  })
+
+  const verifyCoordinationMutation = useMutation({
+    mutationFn: ({ reportId, notes }: { reportId: number; notes?: string }) =>
+      reportsApi.verifyFoundReportCoordination(reportId, notes),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['all-reports'] })
+      setSelectedReport(prev => prev ? { ...prev, coordination_status: 'verified' } : null)
+      setMessage('Finder coordination marked as verified. Ready to publish.')
+    },
+    onError: (error: any) => {
+      setMessage(error.message || 'Failed to verify coordination')
+    },
+  })
+
   const handleView = (report: Report) => {
     setSelectedReport(report)
     setIsModalOpen(true)
     setMessage('')
+    setCoordinationNotes('')
+    setSelectedCategory(report.category || '')
+  }
+
+  const handleContactFinder = () => {
+    if (!selectedReport || !selectedReport.is_found_report) {
+      setMessage('This is not a found item report.')
+      return
+    }
+    if (!coordinationNotes.trim()) {
+      setMessage('Please enter coordination notes before contacting the finder')
+      return
+    }
+    contactFinderMutation.mutate({
+      reportId: Number(selectedReport.report_id),
+      notes: coordinationNotes.trim(),
+    })
+  }
+
+  const handleMarkVerified = () => {
+    if (!selectedReport) return
+    verifyCoordinationMutation.mutate({
+      reportId: Number(selectedReport.report_id),
+      notes: coordinationNotes.trim() || undefined,
+    })
   }
 
   const handlePublish = () => {
     if (!selectedReport) return
-    publishMutation.mutate(parseInt(selectedReport.report_id))
+    if (!selectedCategory.trim()) {
+      setMessage('Please select a category before publishing')
+      return
+    }
+    publishMutation.mutate({
+      reportId: parseInt(selectedReport.report_id),
+      category: selectedCategory.trim(),
+    })
   }
 
   const handleReject = () => {
@@ -98,12 +178,43 @@ function ReportsPage() {
 
   const getImageUrl = (imagePath: string) => {
     if (!imagePath) return 'https://via.placeholder.com/400x200?text=No+Image'
+
+    if (imagePath.includes('drive.google.com')) {
+      const fileIdFromPath = imagePath.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1]
+      let fileIdFromQuery: string | null = null
+      try {
+        fileIdFromQuery = new URL(imagePath).searchParams.get('id')
+      } catch {
+        fileIdFromQuery = null
+      }
+      const fileId = fileIdFromPath || fileIdFromQuery
+      if (fileId) {
+        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`
+      }
+    }
+
     if (imagePath.startsWith('http')) return imagePath
     return `http://192.168.1.131:5000/reports/images/${encodeURIComponent(imagePath)}`
   }
 
+  const getDrivePreviewUrl = (url: string) => {
+    if (!url) return ''
+    if (url.includes('drive.google.com')) {
+      const fileIdFromPath = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1]
+      let fileIdFromQuery: string | null = null
+      try {
+        fileIdFromQuery = new URL(url).searchParams.get('id')
+      } catch {
+        fileIdFromQuery = null
+      }
+      const fileId = fileIdFromPath || fileIdFromQuery
+      if (fileId) return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`
+    }
+    return url
+  }
+
   return (
-    <div className="min-h-screen p-6">
+    <div className="min-h-screen p-3 sm:p-6">
       <div className="max-w-7xl mx-auto">
         <div className="glass-card rounded-2xl overflow-hidden">
           <div className="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 overflow-x-auto">
@@ -161,7 +272,7 @@ function ReportsPage() {
                     <td colSpan={6} className="px-4 py-8 text-center text-gray-500">No reports found</td>
                   </tr>
                 ) : (
-                  reports.map((report: Report) => (
+                  paginatedReports.map((report: Report) => (
                     <tr key={report.report_id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">#{report.report_id}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{report.item_name}</td>
@@ -184,6 +295,33 @@ function ReportsPage() {
               </tbody>
             </table>
           </div>
+
+          {!isLoading && reports.length > 0 && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border-t border-gray-200 dark:border-gray-800">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, reports.length)} of {reports.length} reports
+              </p>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPageSafe === 1}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-gray-600 dark:text-gray-300">
+                  Page {currentPageSafe} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPageSafe === totalPages}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -199,11 +337,13 @@ function ReportsPage() {
 
             {message && (
               <div className={`mb-4 p-3 rounded-lg flex items-center gap-2 ${
-                message.includes('success') 
+                message.includes('success') || message.includes('Finder') || message.includes('verified')
                   ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' 
-                  : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                  : message.includes('error') || message.includes('Please')
+                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                  : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
               }`}>
-                {message.includes('success') ? <CheckCircle size={18} /> : <XCircle size={18} />}
+                {message.includes('error') || message.includes('Please') ? <XCircle size={18} /> : <CheckCircle size={18} />}
                 {message}
               </div>
             )}
@@ -222,7 +362,7 @@ function ReportsPage() {
                 </div>
               )}
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <p className="text-xs text-gray-500 uppercase">Item</p>
                   <p className="font-semibold text-gray-900 dark:text-white">{selectedReport.item_name}</p>
@@ -247,15 +387,123 @@ function ReportsPage() {
                 <p className="text-xs text-gray-500 uppercase mb-1">Description</p>
                 <p className="text-gray-700 dark:text-gray-300 text-sm">{selectedReport.description}</p>
               </div>
+
+              {selectedReport.public_match_link && (
+                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <p className="text-xs text-gray-500 uppercase mb-1">Public Match Image</p>
+                  <img
+                    src={getDrivePreviewUrl(selectedReport.public_match_link)}
+                    alt="Public match"
+                    className="w-full h-40 object-cover rounded-lg border border-gray-200 dark:border-gray-700 mb-2"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none'
+                    }}
+                  />
+                  <a
+                    href={selectedReport.public_match_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm text-[#0217f7] dark:text-[#f5e102] hover:underline break-all"
+                  >
+                    Open public match image
+                  </a>
+                </div>
+              )}
+
+              {!isPublished(selectedReport.status) && (
+                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  <p className="text-xs text-gray-500 uppercase mb-2">Category (Required before publish)</p>
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="w-full input-field"
+                  >
+                    <option value="">Select category</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Accessories">Accessories</option>
+                    <option value="Bags">Bags</option>
+                    <option value="Books">Books</option>
+                    <option value="Stationery">Stationery</option>
+                    <option value="Others">Others</option>
+                  </select>
+                </div>
+              )}
+
+              {selectedReport.is_found_report && (
+                <div className="border-2 border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
+                  <h3 className="font-semibold text-orange-900 dark:text-orange-300 mb-3 flex items-center gap-2">
+                    <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                    Found Item - Coordination Required
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                      <p className="text-xs text-gray-500 uppercase mb-1">Finder Name</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">{selectedReport.finder_name || 'N/A'}</p>
+                    </div>
+                    <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                      <p className="text-xs text-gray-500 uppercase mb-1">Finder Contact</p>
+                      <p className="font-semibold text-gray-900 dark:text-white">{selectedReport.finder_contact_info || 'N/A'}</p>
+                    </div>
+                    {selectedReport.finder_student_number && (
+                      <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                        <p className="text-xs text-gray-500 uppercase mb-1">Student Number</p>
+                        <p className="font-semibold text-gray-900 dark:text-white">{selectedReport.finder_student_number}</p>
+                      </div>
+                    )}
+                    <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                      <p className="text-xs text-gray-500 uppercase mb-1">Coordination Status</p>
+                      <p className="font-semibold text-gray-900 dark:text-white capitalize">
+                        {selectedReport.coordination_status === 'verified' && <span className="text-green-600 dark:text-green-400">✓ Verified</span>}
+                        {selectedReport.coordination_status === 'contacted' && <span className="text-blue-600 dark:text-blue-400">Contacted - Awaiting Confirmation</span>}
+                        {!selectedReport.coordination_status || selectedReport.coordination_status === 'pending' && <span className="text-orange-600 dark:text-orange-400">Pending Contact</span>}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
+
+            {selectedReport.is_found_report && (!selectedReport.coordination_status || selectedReport.coordination_status === 'pending') && (
+              <div className="mb-6 p-4 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <h3 className="font-semibold text-blue-900 dark:text-blue-300 mb-3">Coordinate with Finder</h3>
+                <textarea
+                  value={coordinationNotes}
+                  onChange={(e) => setCoordinationNotes(e.target.value)}
+                  placeholder="Enter coordination message or verification notes... (e.g., 'Please confirm item details', 'Verify item location', etc.)"
+                  className="w-full p-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 resize-none h-20"
+                />
+                <button
+                  onClick={handleContactFinder}
+                  disabled={contactFinderMutation.isPending}
+                  className="mt-3 w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                >
+                  {contactFinderMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <MessageSquare size={18} />}
+                  {contactFinderMutation.isPending ? 'Contacting Finder...' : 'Contact Finder'}
+                </button>
+              </div>
+            )}
+
+            {selectedReport.is_found_report && selectedReport.coordination_status === 'contacted' && (
+              <div className="mb-6 p-4 border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                <button
+                  onClick={handleMarkVerified}
+                  disabled={verifyCoordinationMutation.isPending}
+                  className="w-full bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                >
+                  {verifyCoordinationMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
+                  {verifyCoordinationMutation.isPending ? 'Verifying...' : 'Mark as Verified & Ready to Publish'}
+                </button>
+              </div>
+            )}
 
             <div className="flex flex-col sm:flex-row gap-3">
               {!isPublished(selectedReport.status) ? (
                 <>
                   <button
                     onClick={handlePublish}
-                    disabled={publishMutation.isPending}
-                    className="flex-1 btn-primary flex items-center justify-center gap-2 py-3"
+                    disabled={publishMutation.isPending || contactFinderMutation.isPending || verifyCoordinationMutation.isPending || !selectedCategory.trim() || (selectedReport.is_found_report && selectedReport.coordination_status !== 'verified')}
+                    title={selectedReport.is_found_report && selectedReport.coordination_status !== 'verified' ? 'Must verify with finder before publishing' : ''}
+                    className="flex-1 btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {publishMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
                     Approve & Publish

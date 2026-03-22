@@ -61,13 +61,23 @@ export const reportsApi = {
   getAll: () => fetchWithAuth('/reports/all-reports'),
   getClaimable: () => fetch(`${API_BASE_URL}/reports/claimable-reports`).then(r => r.json()),
   getById: (id: string) => fetchWithAuth(`/reports/report/${id}`),
-  publish: (reportId: number) => fetchWithAuth('/reports/publish-report', {
+  publish: (reportId: number, category: string) => fetchWithAuth('/reports/publish-report', {
     method: 'POST',
-    body: JSON.stringify({ report_id: reportId }),
+    body: JSON.stringify({ report_id: reportId, category }),
   }),
   delete: (reportId: string) => fetchWithAuth(`/reports/delete-report/${reportId}`, {
     method: 'DELETE',
   }),
+  contactFinderForFoundReport: (reportId: number, adminNotes: string) =>
+    fetchWithAuth(`/found-items/report/${reportId}/contact`, {
+      method: 'POST',
+      body: JSON.stringify({ admin_notes: adminNotes }),
+    }),
+  verifyFoundReportCoordination: (reportId: number, adminNotes?: string) =>
+    fetchWithAuth(`/found-items/report/${reportId}/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ admin_notes: adminNotes }),
+    }),
   submit: (formData: FormData) => fetch(`${API_BASE_URL}/reports/report-item`, {
     method: 'POST',
     body: formData,
@@ -124,6 +134,10 @@ export const siftApi = {
   train: (gdriveUrl: string) => fetchWithAuth('/sift/train', {
     method: 'POST',
     body: JSON.stringify({ gdrive_url: gdriveUrl }),
+  }),
+  retrainByStatus: (status: 'lost' | 'found') => fetchWithAuth('/sift/admin/retrain', {
+    method: 'POST',
+    body: JSON.stringify({ status }),
   }),
   process: (imageUrl: string) => fetchWithAuth('/sift/process', {
     method: 'POST',

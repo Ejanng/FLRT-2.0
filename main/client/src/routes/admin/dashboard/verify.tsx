@@ -4,6 +4,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, CheckCircle, XCircle, Eye, Loader2, Check, User, FileText } from 'lucide-react'
 import { claimsApi } from '../../../services/api'
+import { requireAdminAuth } from '../../../utils/adminAuth'
+
+const ITEMS_PER_PAGE = 8
 
 interface Claim {
   claim_id: number
@@ -20,10 +23,20 @@ interface Claim {
     description: string
     location: string
     image?: string
+    status?: string
+    finder?: {
+      name?: string
+      student_number?: string
+      contact_info?: string
+      coordination_status?: string
+    }
   }
 }
 
 export const Route = createFileRoute('/admin/dashboard/verify')({
+  beforeLoad: () => {
+    requireAdminAuth()
+  },
   component: VerifyClaimsPage,
 })
 
@@ -33,6 +46,7 @@ function VerifyClaimsPage() {
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [message, setMessage] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
 
   const { data: claimsData, isLoading } = useQuery({
     queryKey: ['pending-claims'],
@@ -41,6 +55,10 @@ function VerifyClaimsPage() {
   })
 
   const claims = claimsData?.claims || []
+  const totalPages = Math.max(1, Math.ceil(claims.length / ITEMS_PER_PAGE))
+  const currentPageSafe = Math.min(currentPage, totalPages)
+  const startIndex = (currentPageSafe - 1) * ITEMS_PER_PAGE
+  const paginatedClaims = claims.slice(startIndex, startIndex + ITEMS_PER_PAGE)
 
   const reviewMutation = useMutation({
     mutationFn: ({ claimId, action }: { claimId: number; action: 'approve' | 'reject' }) =>
@@ -55,6 +73,7 @@ function VerifyClaimsPage() {
         setMessage('')
       }, 1500)
     },
+    
     onError: (error: any) => {
       setMessage(error.message || 'Failed to process claim')
     },
@@ -90,8 +109,29 @@ function VerifyClaimsPage() {
     )
   }
 
+  const getImageUrl = (imagePath?: string) => {
+    if (!imagePath) return 'https://via.placeholder.com/400x200?text=No+Image'
+
+    if (imagePath.includes('drive.google.com')) {
+      const fileIdFromPath = imagePath.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1]
+      let fileIdFromQuery: string | null = null
+      try {
+        fileIdFromQuery = new URL(imagePath).searchParams.get('id')
+      } catch {
+        fileIdFromQuery = null
+      }
+      const fileId = fileIdFromPath || fileIdFromQuery
+      if (fileId) {
+        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`
+      }
+    }
+
+    if (imagePath.startsWith('http')) return imagePath
+    return `http://192.168.1.131:5000/reports/images/${encodeURIComponent(imagePath)}`
+  }
+
   return (
-    <div className="min-h-screen p-6">
+    <div className="min-h-screen p-3 sm:p-6">
       <div className="max-w-7xl mx-auto">
         <div className="glass-card rounded-2xl overflow-hidden">
           <div className="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 overflow-x-auto">
@@ -119,14 +159,14 @@ function VerifyClaimsPage() {
           </div>
 
           <div className="p-6 border-b border-gray-200 dark:border-gray-800">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Pending Claims</h1>
                 <p className="text-gray-500 dark:text-gray-400 mt-1">
                   Review and verify ownership claims from students
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 self-start sm:self-auto">
                 <span className="bg-[#f5e102] text-[#0217f7] px-3 py-1 rounded-full text-sm font-bold">
                   {claims.length} Pending
                 </span>
@@ -146,7 +186,7 @@ function VerifyClaimsPage() {
             </div>
           ) : (
             <div className="grid gap-4 p-6">
-              {claims.map((claim: Claim) => (
+              {paginatedClaims.map((claim: Claim) => (
                 <div 
                   key={claim.claim_id} 
                   className="bg-white dark:bg-[#1e1e2e] rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow"
@@ -155,7 +195,7 @@ function VerifyClaimsPage() {
                     <div className="w-full sm:w-32 h-32 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
                       {claim.report?.image ? (
                         <img 
-                          src={claim.report.image.startsWith('http') ? claim.report.image : `http://192.168.1.131:5000/reports/images/${encodeURIComponent(claim.report.image)}`}
+                          src={getImageUrl(claim.report.image)}
                           alt={claim.report.item_name}
                           className="w-full h-full object-cover"
                           onError={(e) => {
@@ -197,7 +237,7 @@ function VerifyClaimsPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <span className="text-xs text-gray-400">
                           Claimed on {new Date(claim.date_claimed).toLocaleDateString()}
                         </span>
@@ -212,6 +252,33 @@ function VerifyClaimsPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {!isLoading && claims.length > 0 && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border-t border-gray-200 dark:border-gray-800">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, claims.length)} of {claims.length} claims
+              </p>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPageSafe === 1}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-gray-600 dark:text-gray-300">
+                  Page {currentPageSafe} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPageSafe === totalPages}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -248,7 +315,7 @@ function VerifyClaimsPage() {
                 {selectedClaim.report?.image && (
                   <div className="rounded-xl overflow-hidden">
                     <img 
-                      src={selectedClaim.report.image.startsWith('http') ? selectedClaim.report.image : `http://192.168.1.131:5000/reports/images/${encodeURIComponent(selectedClaim.report.image)}`}
+                      src={getImageUrl(selectedClaim.report.image)}
                       alt={selectedClaim.report.item_name}
                       className="w-full h-48 object-cover"
                       onError={(e) => {
@@ -263,6 +330,18 @@ function VerifyClaimsPage() {
                   <p className="text-sm"><span className="text-gray-500">Location:</span> <span className="font-medium text-gray-900 dark:text-white">{selectedClaim.report?.location}</span></p>
                   <p className="text-sm text-gray-600 dark:text-gray-300">{selectedClaim.report?.description}</p>
                 </div>
+
+                {selectedClaim.report?.finder && (
+                  <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <p className="text-xs text-blue-700 dark:text-blue-300 uppercase font-semibold mb-2">Finder Information</p>
+                    <div className="space-y-1 text-sm">
+                      <p><span className="text-gray-500">Name:</span> <span className="font-medium text-gray-900 dark:text-white">{selectedClaim.report.finder.name || 'N/A'}</span></p>
+                      <p><span className="text-gray-500">Student Number:</span> <span className="font-medium text-gray-900 dark:text-white">{selectedClaim.report.finder.student_number || 'N/A'}</span></p>
+                      <p><span className="text-gray-500">Contact:</span> <span className="font-medium text-gray-900 dark:text-white">{selectedClaim.report.finder.contact_info || 'N/A'}</span></p>
+                      <p><span className="text-gray-500">Coordination:</span> <span className="font-medium text-gray-900 dark:text-white">{selectedClaim.report.finder.coordination_status || 'N/A'}</span></p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -293,7 +372,7 @@ function VerifyClaimsPage() {
                     <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                       <p className="text-xs text-gray-500 uppercase mb-2">Attached Image</p>
                       <img 
-                        src={selectedClaim.image.startsWith('http') ? selectedClaim.image : `http://192.168.1.131:5000/reports/images/${encodeURIComponent(selectedClaim.image)}`}
+                        src={getImageUrl(selectedClaim.image)}
                         alt="Proof"
                         className="w-full h-32 object-cover rounded-lg"
                         onError={(e) => {

@@ -183,7 +183,7 @@ function ClaimFormPage() {
                 type="text" 
                 value={formData.claimantId}
                 onChange={(e) => setFormData(prev => ({ ...prev, claimantId: e.target.value }))}
-                placeholder="2024-12345"
+                placeholder="23-140123"
                 className={`input-field ${errors.claimantId ? 'border-red-500' : ''}`}
               />
               {errors.claimantId && <p className="text-red-500 text-xs mt-1">{errors.claimantId}</p>}
@@ -198,7 +198,7 @@ function ClaimFormPage() {
                 type={isFoundFlow ? 'text' : 'email'} 
                 value={formData.claimantEmail}
                 onChange={(e) => setFormData(prev => ({ ...prev, claimantEmail: e.target.value }))}
-                placeholder={isFoundFlow ? 'you@email.com or 09123456789' : 'your@email.com'}
+                placeholder={isFoundFlow ? 'juandelacruz@gmail.com or 09123456789' : 'juandelacruz@gmail.com'}
                 className={`input-field ${errors.claimantEmail ? 'border-red-500' : ''}`}
               />
               {errors.claimantEmail && <p className="text-red-500 text-xs mt-1">{errors.claimantEmail}</p>}

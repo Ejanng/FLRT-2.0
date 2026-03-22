@@ -1,7 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { Menu, X, Home, FileText, Search, Shield, Sun, Moon } from 'lucide-react'
+import { Menu, X, Home, FileText, Search, Shield, Sun, Moon, Info } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
+import { hasValidAdminSession } from '../utils/adminAuth'
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false)
@@ -15,11 +16,14 @@ export default function Header() {
     return currentPath.startsWith(path)
   }
 
+  const isAuthenticatedAdmin = hasValidAdminSession()
+
   const navItems = [
     { to: '/', label: 'Home', icon: Home },
     { to: '/report', label: 'Report', icon: FileText },
     { to: '/claim', label: 'Find', icon: Search },
-    { to: '/admin', label: 'Admin', icon: Shield },
+    { to: '/about', label: 'About', icon: Info },
+    { to: isAuthenticatedAdmin ? '/admin/dashboard' : '/admin', label: 'Admin', icon: Shield },
   ]
 
   return (

@@ -73,7 +73,7 @@ export default function PersonalInfoModal({ isOpen, onClose, onSubmit, isLoading
               type="text"
               value={info.studentNumber}
               onChange={(e) => setInfo((prev) => ({ ...prev, studentNumber: e.target.value }))}
-              placeholder="2024-12345"
+              placeholder="23-140123"
               className={`input-field ${errors.studentNumber ? 'border-red-500' : ''}`}
             />
             {errors.studentNumber && <span className="text-xs text-red-500">{errors.studentNumber}</span>}

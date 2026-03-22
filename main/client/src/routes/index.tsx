@@ -81,7 +81,7 @@ function Home() {
 
         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-6">
           <span className="block text-gray-900 dark:text-white mb-2">
-            Finding and Locating
+            Welcome to <span className="text-[#0217f7]">FLIRT</span>
           </span>
           <span className="text-gradient">Lost Items Made Simple</span>
         </h1>

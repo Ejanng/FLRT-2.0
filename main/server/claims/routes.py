@@ -2,8 +2,10 @@ from flask import Blueprint, request, jsonify
 from models.pending_claims_model import PendingClaims
 from models.reports_model import Reports
 from models.returns_model import Returns
+from models.found_items_model import FoundItems
 from core.extensions import db
 from datetime import datetime, timezone
+from sift.services import upload_manual_claim_image, archive_returned_item_images
 
 claim_bp = Blueprint('claims', __name__)
 
@@ -30,7 +32,11 @@ def submit_claim():
         if image_file and image_file.filename:
             temp_path = f"/tmp/claim_{datetime.now().timestamp()}_{image_file.filename}"
             image_file.save(temp_path)
-            image_url = temp_path
+            upload_result = upload_manual_claim_image(temp_path, filename_prefix='manual_claim_proof')
+            if upload_result.get('success'):
+                image_url = upload_result.get('gdrive_view_link')
+            else:
+                image_url = temp_path
         
         # Validate
         if not all([report_id, student_name, student_number, contact_info, description]):
@@ -101,8 +107,18 @@ def get_pending_claims():
                     'item_name': report.item_name,
                     'description': report.description,
                     'location': report.location,
-                    'image': report.image
+                    'image': report.image,
+                    'status': report.status,
                 }
+
+                found_item = FoundItems.query.filter_by(report_id=report.report_id).first()
+                if found_item:
+                    claim_data['report']['finder'] = {
+                        'name': found_item.finder_name,
+                        'student_number': found_item.finder_student_number,
+                        'contact_info': found_item.finder_contact_info,
+                        'coordination_status': found_item.status,
+                    }
             result.append(claim_data)
         
         return jsonify({
@@ -144,8 +160,50 @@ def review_claim(claim_id):
             
             # Update report status to returned
             report = Reports.query.get(claim.report_id)
+            original_status = (report.status or '').strip().lower() if report else ''
             if report:
                 report.status = 'returned'
+
+            found_item = FoundItems.query.filter_by(report_id=claim.report_id).first()
+            if found_item:
+                found_item.status = 'returned'
+                found_item.date_closed = datetime.now(timezone.utc)
+
+            lost_images_to_archive = []
+            found_images_to_archive = []
+
+            report_image = report.image if report else None
+            found_image = found_item.image if found_item else None
+            matched_image = claim.image
+
+            if original_status in ('found', 'published_found'):
+                if report_image:
+                    found_images_to_archive.append(report_image)
+                if found_image:
+                    found_images_to_archive.append(found_image)
+                if matched_image:
+                    lost_images_to_archive.append(matched_image)
+            elif original_status in ('lost', 'published_lost'):
+                if report_image:
+                    lost_images_to_archive.append(report_image)
+                if found_image:
+                    found_images_to_archive.append(found_image)
+                if matched_image:
+                    found_images_to_archive.append(matched_image)
+            else:
+                if report_image:
+                    lost_images_to_archive.append(report_image)
+                if found_image:
+                    found_images_to_archive.append(found_image)
+                if matched_image:
+                    found_images_to_archive.append(matched_image)
+
+            archive_result = archive_returned_item_images(
+                lost_image_sources=lost_images_to_archive,
+                found_image_sources=found_images_to_archive,
+            )
+            if not archive_result.get('success'):
+                print(f"Archive warning: {archive_result}")
             
             # Create return record
             return_record = Returns(
@@ -192,6 +250,15 @@ def get_claim(claim_id):
         report = Reports.query.get(claim.report_id)
         if report:
             claim_data['report'] = report.to_json()
+
+            found_item = FoundItems.query.filter_by(report_id=report.report_id).first()
+            if found_item:
+                claim_data['report']['finder'] = {
+                    'name': found_item.finder_name,
+                    'student_number': found_item.finder_student_number,
+                    'contact_info': found_item.finder_contact_info,
+                    'coordination_status': found_item.status,
+                }
         
         return jsonify({"claim": claim_data}), 200
     except Exception as e:

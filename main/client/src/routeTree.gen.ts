@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ReportRouteImport } from './routes/report'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ClaimIndexRouteImport } from './routes/claim/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -23,6 +24,11 @@ import { Route as AdminDashboardFoundItemsRouteImport } from './routes/admin/das
 const ReportRoute = ReportRouteImport.update({
   id: '/report',
   path: '/report',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -74,6 +80,7 @@ const AdminDashboardFoundItemsRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/report': typeof ReportRoute
   '/claim/claimForm': typeof ClaimClaimFormRoute
   '/claim/foundForm': typeof ClaimFoundFormRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/report': typeof ReportRoute
   '/claim/claimForm': typeof ClaimClaimFormRoute
   '/claim/foundForm': typeof ClaimFoundFormRoute
@@ -99,6 +107,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/report': typeof ReportRoute
   '/claim/claimForm': typeof ClaimClaimFormRoute
   '/claim/foundForm': typeof ClaimFoundFormRoute
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
     | '/report'
     | '/claim/claimForm'
     | '/claim/foundForm'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
     | '/report'
     | '/claim/claimForm'
     | '/claim/foundForm'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/about'
     | '/report'
     | '/claim/claimForm'
     | '/claim/foundForm'
@@ -150,6 +162,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
   ReportRoute: typeof ReportRoute
   ClaimClaimFormRoute: typeof ClaimClaimFormRoute
   ClaimFoundFormRoute: typeof ClaimFoundFormRoute
@@ -168,6 +181,13 @@ declare module '@tanstack/react-router' {
       path: '/report'
       fullPath: '/report'
       preLoaderRoute: typeof ReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -238,6 +258,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
   ReportRoute: ReportRoute,
   ClaimClaimFormRoute: ClaimClaimFormRoute,
   ClaimFoundFormRoute: ClaimFoundFormRoute,
