@@ -5,6 +5,7 @@ from auth.routes import auth_bp
 from reports.routes import report_bp
 from claims.routes import claim_bp
 from stats.routes import stats_bp  # New!
+from found_items.routes import found_items_bp  # New!
 from models import *
 from sift.routes import sift_bp
 
@@ -33,11 +34,12 @@ def create_app():
     app.register_blueprint(report_bp, url_prefix='/reports')
     app.register_blueprint(claim_bp, url_prefix='/claims')
     app.register_blueprint(stats_bp, url_prefix='/stats')  # New!
+    app.register_blueprint(found_items_bp, url_prefix='/found-items')  # New!
     app.register_blueprint(sift_bp, url_prefix='/sift')
 
     print("✅ App initialized successfully")
     print(f"   Database: {Config.SQLALCHEMY_DATABASE_URI}")
-    print(f"   Registered blueprints: auth, reports, claims, stats, sift")
+    print(f"   Registered blueprints: auth, reports, claims, stats, found-items, sift")
 
     return app
 

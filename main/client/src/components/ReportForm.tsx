@@ -22,18 +22,29 @@ interface ReportFormData {
 
 const MAX_CHARS = 1000
 
-export default function ReportForm() {
+interface ReportFormProps {
+  initialData?: Partial<ReportFormData>
+}
+
+export default function ReportForm({ initialData }: ReportFormProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+
+  const normalizedInitialData: ReportFormData = {
+    itemName: initialData?.itemName || '',
+    description: initialData?.description || '',
+    status: initialData?.status || '',
+    location: initialData?.location || '',
+    date: initialData?.date || '',
+    time: initialData?.time || '',
+    photo: null,
+    studentName: initialData?.studentName,
+    studentNumber: initialData?.studentNumber,
+    contactInfo: initialData?.contactInfo,
+  }
   
   const [formData, setFormData] = useState<ReportFormData>({
-    itemName: '',
-    description: '',
-    status: '',
-    location: '',
-    date: '',
-    time: '',
-    photo: null,
+    ...normalizedInitialData,
   })
   
   const [pendingData, setPendingData] = useState<ReportFormData | null>(null)
@@ -115,6 +126,12 @@ export default function ReportForm() {
     setSubmitMessage('')
     setSubmitStatus('')
 
+    if (formData.status === 'found' && (!formData.studentName || !formData.studentNumber || !formData.contactInfo)) {
+      setPendingData(formData)
+      setShowModal(true)
+      return
+    }
+
     const formDataToSend = new FormData()
     formDataToSend.append('item_name', formData.itemName)
     formDataToSend.append('description', formData.description)
@@ -134,6 +151,13 @@ export default function ReportForm() {
     if (!pendingData) return
     
     setShowModal(false)
+
+    setFormData((prev) => ({
+      ...prev,
+      studentName: info.studentName,
+      studentNumber: info.studentNumber,
+      contactInfo: info.contactInfo,
+    }))
     
     const formDataToSend = new FormData()
     formDataToSend.append('item_name', pendingData.itemName)

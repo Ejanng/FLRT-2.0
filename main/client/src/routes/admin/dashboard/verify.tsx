@@ -94,21 +94,27 @@ function VerifyClaimsPage() {
     <div className="min-h-screen p-6">
       <div className="max-w-7xl mx-auto">
         <div className="glass-card rounded-2xl overflow-hidden">
-          <div className="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
+          <div className="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 overflow-x-auto">
             <button 
               onClick={() => navigate({ to: '/admin/dashboard' })}
-              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium"
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
             >
               All Reports
             </button>
-            <button className="px-4 py-2 rounded-xl bg-[#0217f7] text-white text-sm font-medium">
+            <button className="px-4 py-2 rounded-xl bg-[#0217f7] text-white text-sm font-medium whitespace-nowrap">
               Verify Claims
             </button>
             <button 
               onClick={() => navigate({ to: '/admin/dashboard/reports' })}
-              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium"
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
             >
               Manage Reports
+            </button>
+            <button 
+              onClick={() => navigate({ to: '/admin/dashboard/found-items' })}
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
+            >
+              Found Items
             </button>
           </div>
 
@@ -149,7 +155,7 @@ function VerifyClaimsPage() {
                     <div className="w-full sm:w-32 h-32 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
                       {claim.report?.image ? (
                         <img 
-                          src={claim.report.image.startsWith('http') ? claim.report.image : `http://localhost:5000/reports/images/${encodeURIComponent(claim.report.image)}`}
+                          src={claim.report.image.startsWith('http') ? claim.report.image : `http://192.168.1.131:5000/reports/images/${encodeURIComponent(claim.report.image)}`}
                           alt={claim.report.item_name}
                           className="w-full h-full object-cover"
                           onError={(e) => {
@@ -242,7 +248,7 @@ function VerifyClaimsPage() {
                 {selectedClaim.report?.image && (
                   <div className="rounded-xl overflow-hidden">
                     <img 
-                      src={selectedClaim.report.image.startsWith('http') ? selectedClaim.report.image : `http://localhost:5000/reports/images/${encodeURIComponent(selectedClaim.report.image)}`}
+                      src={selectedClaim.report.image.startsWith('http') ? selectedClaim.report.image : `http://192.168.1.131:5000/reports/images/${encodeURIComponent(selectedClaim.report.image)}`}
                       alt={selectedClaim.report.item_name}
                       className="w-full h-48 object-cover"
                       onError={(e) => {
@@ -287,7 +293,7 @@ function VerifyClaimsPage() {
                     <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                       <p className="text-xs text-gray-500 uppercase mb-2">Attached Image</p>
                       <img 
-                        src={selectedClaim.image.startsWith('http') ? selectedClaim.image : `http://localhost:5000/reports/images/${encodeURIComponent(selectedClaim.image)}`}
+                        src={selectedClaim.image.startsWith('http') ? selectedClaim.image : `http://192.168.1.131:5000/reports/images/${encodeURIComponent(selectedClaim.image)}`}
                         alt="Proof"
                         className="w-full h-32 object-cover rounded-lg"
                         onError={(e) => {

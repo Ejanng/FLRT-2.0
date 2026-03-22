@@ -99,28 +99,34 @@ function ReportsPage() {
   const getImageUrl = (imagePath: string) => {
     if (!imagePath) return 'https://via.placeholder.com/400x200?text=No+Image'
     if (imagePath.startsWith('http')) return imagePath
-    return `http://localhost:5000/reports/images/${encodeURIComponent(imagePath)}`
+    return `http://192.168.1.131:5000/reports/images/${encodeURIComponent(imagePath)}`
   }
 
   return (
     <div className="min-h-screen p-6">
       <div className="max-w-7xl mx-auto">
         <div className="glass-card rounded-2xl overflow-hidden">
-          <div className="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
+          <div className="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 overflow-x-auto">
             <button 
               onClick={() => navigate({ to: '/admin/dashboard' })}
-              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium"
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
             >
               All Reports
             </button>
             <button 
               onClick={() => navigate({ to: '/admin/dashboard/verify' })}
-              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium"
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
             >
               Verify Claims
             </button>
-            <button className="px-4 py-2 rounded-xl bg-[#0217f7] text-white text-sm font-medium">
+            <button className="px-4 py-2 rounded-xl bg-[#0217f7] text-white text-sm font-medium whitespace-nowrap">
               Manage Reports
+            </button>
+            <button 
+              onClick={() => navigate({ to: '/admin/dashboard/found-items' })}
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
+            >
+              Found Items
             </button>
           </div>
 

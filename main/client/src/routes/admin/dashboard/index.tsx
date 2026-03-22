@@ -53,7 +53,7 @@ function DashboardPage() {
   } = useQuery({
     queryKey: ['recent-reports'],
     queryFn: async () => {
-      const res = await fetch('http://localhost:5000/reports/all-reports')
+      const res = await fetch('http://192.168.1.131:5000/reports/all-reports')
       if (!res.ok) throw new Error('Failed to fetch')
       const data = await res.json()
       return data.reports?.slice(0, 5) || []
@@ -198,13 +198,13 @@ function DashboardPage() {
         {/* Main Content */}
         <div className="glass-card rounded-2xl overflow-hidden">
           {/* Tabs */}
-          <div className="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-800">
-            <button className="px-4 py-2 rounded-xl bg-[#0217f7] text-white text-sm font-medium">
+          <div className="flex gap-2 p-4 border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
+            <button className="px-4 py-2 rounded-xl bg-[#0217f7] text-white text-sm font-medium whitespace-nowrap">
               All Reports
             </button>
             <button 
               onClick={() => navigate({ to: '/admin/dashboard/verify' })}
-              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium"
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
             >
               Verify Claims {stats.pending_claims > 0 && (
                 <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
@@ -214,9 +214,15 @@ function DashboardPage() {
             </button>
             <button 
               onClick={() => navigate({ to: '/admin/dashboard/reports' })}
-              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium"
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
             >
               Manage Reports
+            </button>
+            <button 
+              onClick={() => navigate({ to: '/admin/dashboard/found-items' })}
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
+            >
+              Found Items
             </button>
           </div>
 

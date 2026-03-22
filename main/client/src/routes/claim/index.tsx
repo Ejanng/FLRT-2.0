@@ -46,7 +46,7 @@ function ClaimantPage() {
   const getImageUrl = (imagePath: string) => {
     if (!imagePath) return 'https://via.placeholder.com/300x200?text=No+Image'
     if (imagePath.startsWith('http')) return imagePath
-    return `http://localhost:5000/reports/images/${encodeURIComponent(imagePath)}`
+    return `http://192.168.1.131:5000/reports/images/${encodeURIComponent(imagePath)}`
   }
 
   return (
@@ -155,19 +155,36 @@ function ClaimantPage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => navigate({ 
-                    to: '/claim/claimForm', 
-                    search: { 
-                      id: item.report_id, 
-                      name: item.item_name, 
-                      location: item.location, 
-                      date: item.date_reported, 
-                      category: item.category 
-                    } 
-                  })}
+                  onClick={() => {
+                    if (item.status === 'lost') {
+                      navigate({
+                        to: '/claim/claimForm',
+                        search: {
+                          id: item.report_id,
+                          name: item.item_name,
+                          location: item.location,
+                          date: item.date_reported,
+                          category: item.category,
+                          mode: 'found',
+                        },
+                      })
+                      return
+                    }
+
+                    navigate({
+                      to: '/claim/claimForm',
+                      search: {
+                        id: item.report_id,
+                        name: item.item_name,
+                        location: item.location,
+                        date: item.date_reported,
+                        category: item.category,
+                      },
+                    })
+                  }}
                   className="w-full btn-primary"
                 >
-                  Claim Item
+                  {item.status === 'lost' ? 'I Found This Item' : 'Claim Item'}
                 </button>
               </div>
             ))}

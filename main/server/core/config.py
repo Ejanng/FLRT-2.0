@@ -13,7 +13,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:5000")
+    API_BASE_URL = os.getenv("API_BASE_URL", "http://192.168.1.131:5000")
 
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
     ALGORITHM = os.getenv('ALGORITHM')

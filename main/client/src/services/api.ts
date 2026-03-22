@@ -1,5 +1,5 @@
 // client/src/services/api.ts
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = 'http://192.168.1.131:5000';
 
 const getAuthHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('admin_token');
@@ -98,6 +98,26 @@ export const authApi = {
     }).then(r => r.json()),
   
   logout: () => fetchWithAuth('/auth/admin-logout', { method: 'POST' }),
+};
+
+export const foundItemsApi = {
+  getAll: () => fetchWithAuth('/found-items/all'),
+  getPending: () => fetchWithAuth('/found-items/pending'),
+  getById: (id: number) => fetchWithAuth(`/found-items/${id}`),
+  submit: (formData: FormData) => fetchWithAuth('/found-items/submit', {
+    method: 'POST',
+    body: formData,
+  }),
+  contact: (foundItemId: number, notes: string) => 
+    fetchWithAuth(`/found-items/${foundItemId}/contact`, {
+      method: 'POST',
+      body: JSON.stringify({ admin_notes: notes }),
+    }),
+  close: (foundItemId: number, status: 'returned' | 'cancelled') => 
+    fetchWithAuth(`/found-items/${foundItemId}/close`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    }),
 };
 
 export const siftApi = {

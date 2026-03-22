@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Upload, X, User, IdCard, Mail, FileText, ArrowLeft, Loader2, CheckCircle } from 'lucide-react'
-import { claimsApi } from '../../services/api'
+import { claimsApi, foundItemsApi } from '../../services/api'
 
 type SearchParams = {
   id: string
@@ -11,6 +11,7 @@ type SearchParams = {
   location: string
   date: string
   category: string
+  mode?: string
 }
 
 export const Route = createFileRoute('/claim/claimForm')({
@@ -20,14 +21,16 @@ export const Route = createFileRoute('/claim/claimForm')({
     location: String(search.location || ''),
     date: String(search.date || ''),
     category: String(search.category || ''),
+    mode: search.mode ? String(search.mode) : undefined,
   }),
   component: ClaimFormPage,
 })
 
 function ClaimFormPage() {
-  const { id, name, location, date, category } = Route.useSearch()
+  const { id, name, location, date, category, mode } = Route.useSearch()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const isFoundFlow = mode === 'found'
   
   const [formData, setFormData] = useState({
     claimantName: '',
@@ -40,10 +43,18 @@ function ClaimFormPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const submitMutation = useMutation({
-    mutationFn: (data: FormData) => claimsApi.submit(data),
+    mutationFn: (data: FormData) => isFoundFlow ? foundItemsApi.submit(data) : claimsApi.submit(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pending-claims'] })
-      alert('Claim submitted successfully! Please wait for admin approval.')
+      if (isFoundFlow) {
+        queryClient.invalidateQueries({ queryKey: ['pending-found-items'] })
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['pending-claims'] })
+      }
+      alert(
+        isFoundFlow
+          ? 'Submission received. The admin will contact you and verify the match.'
+          : 'Claim submitted successfully! Please wait for admin approval.',
+      )
       navigate({ to: '/claim' })
     },
     onError: (error: any) => {
@@ -66,11 +77,18 @@ function ClaimFormPage() {
     if (!formData.claimantName.trim()) newErrors.claimantName = 'Name is required'
     if (!formData.claimantId.trim()) newErrors.claimantId = 'Student number is required'
     if (!formData.claimantEmail.trim()) {
-      newErrors.claimantEmail = 'Email is required'
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.claimantEmail)) {
-      newErrors.claimantEmail = 'Invalid email format'
+      newErrors.claimantEmail = isFoundFlow ? 'Contact is required' : 'Email is required'
+    } else if (
+      (isFoundFlow && !formData.claimantEmail.includes('@') && !formData.claimantEmail.startsWith('0')) ||
+      (!isFoundFlow && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.claimantEmail))
+    ) {
+      newErrors.claimantEmail = isFoundFlow ? 'Enter a valid email or phone number' : 'Invalid email format'
     }
-    if (!formData.description.trim()) newErrors.description = 'Proof of ownership is required'
+    if (!formData.description.trim()) {
+      newErrors.description = isFoundFlow
+        ? 'Please provide important details for admin verification'
+        : 'Proof of ownership is required'
+    }
     // if (!photoFile) newErrors.photo = 'Proof image is required'
     
     setErrors(newErrors)
@@ -82,13 +100,28 @@ function ClaimFormPage() {
     if (!validate()) return
 
     const formDataToSend = new FormData()
-    formDataToSend.append('report_id', id)
-    formDataToSend.append('claimantName', formData.claimantName)
-    formDataToSend.append('claimantId', formData.claimantId)
-    formDataToSend.append('claimantEmail', formData.claimantEmail)
-    formDataToSend.append('description', formData.description)
+    
+    if (isFoundFlow) {
+      // Found items submission
+      formDataToSend.append('finder_name', formData.claimantName)
+      formDataToSend.append('finder_student_number', formData.claimantId)
+      formDataToSend.append('finder_contact_info', formData.claimantEmail)
+      formDataToSend.append('item_name', name)
+      formDataToSend.append('item_description', formData.description)
+      formDataToSend.append('item_location', location)
+      formDataToSend.append('category', category)
+      formDataToSend.append('date_found', new Date(date).toISOString())
+    } else {
+      // Regular claim submission
+      formDataToSend.append('report_id', id)
+      formDataToSend.append('claimantName', formData.claimantName)
+      formDataToSend.append('claimantId', formData.claimantId)
+      formDataToSend.append('claimantEmail', formData.claimantEmail)
+      formDataToSend.append('description', formData.description)
+    }
+    
     if (photoFile) {
-      formDataToSend.append('proof_image', photoFile)
+      formDataToSend.append('image', photoFile)
     }
 
     submitMutation.mutate(formDataToSend)
@@ -105,7 +138,9 @@ function ClaimFormPage() {
         </button>
 
         <div className="bg-[#f5e102]/10 border-2 border-[#f5e102] rounded-xl p-4 mb-6">
-          <h2 className="text-sm font-semibold text-[#0217f7] dark:text-[#f5e102] mb-2">Claiming: {name}</h2>
+          <h2 className="text-sm font-semibold text-[#0217f7] dark:text-[#f5e102] mb-2">
+            {isFoundFlow ? 'Found Item:' : 'Claiming:'} {name}
+          </h2>
           <div className="grid grid-cols-2 gap-2 text-sm text-gray-700 dark:text-gray-300">
             <div><span className="text-gray-500">Location:</span> {location}</div>
             <div><span className="text-gray-500">Date:</span> {new Date(date).toLocaleDateString()}</div>
@@ -114,9 +149,13 @@ function ClaimFormPage() {
         </div>
 
         <div className="glass-card rounded-3xl p-6 sm:p-8">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Submit Claim</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            {isFoundFlow ? 'I Found This Item' : 'Submit Claim'}
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 mb-6">
-            Provide your details and proof of ownership to claim this item.
+            {isFoundFlow
+              ? 'Share your personal details so admins can contact you and coordinate the return with the owner.'
+              : 'Provide your details and proof of ownership to claim this item.'}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -153,13 +192,13 @@ function ClaimFormPage() {
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
                 <Mail size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
-                Email <span className="text-red-500">*</span>
+                {isFoundFlow ? 'Contact (Email or Phone)' : 'Email'} <span className="text-red-500">*</span>
               </label>
               <input 
-                type="email" 
+                type={isFoundFlow ? 'text' : 'email'} 
                 value={formData.claimantEmail}
                 onChange={(e) => setFormData(prev => ({ ...prev, claimantEmail: e.target.value }))}
-                placeholder="your@email.com"
+                placeholder={isFoundFlow ? 'you@email.com or 09123456789' : 'your@email.com'}
                 className={`input-field ${errors.claimantEmail ? 'border-red-500' : ''}`}
               />
               {errors.claimantEmail && <p className="text-red-500 text-xs mt-1">{errors.claimantEmail}</p>}
@@ -168,13 +207,15 @@ function ClaimFormPage() {
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
                 <FileText size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
-                Proof of Ownership <span className="text-red-500">*</span>
+                {isFoundFlow ? 'Item/Find Details' : 'Proof of Ownership'} <span className="text-red-500">*</span>
               </label>
               <textarea 
                 value={formData.description}
                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                 rows={4} 
-                placeholder="Describe details only the owner would know (e.g., serial number, specific marks, contents...)"
+                placeholder={isFoundFlow
+                  ? 'Tell admins where and how you found this item, plus any useful identifying details.'
+                  : 'Describe details only the owner would know (e.g., serial number, specific marks, contents...)'}
                 className={`input-field resize-none ${errors.description ? 'border-red-500' : ''}`}
               />
               {errors.description && <p className="text-red-500 text-xs mt-1">{errors.description}</p>}
@@ -183,7 +224,7 @@ function ClaimFormPage() {
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
                 <Upload size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
-                Upload Proof Photo <span className="text-red-500">*</span>
+                {isFoundFlow ? 'Upload Item Photo' : 'Upload Proof Photo'} <span className="text-red-500">*</span>
               </label>
               <div className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${
                 errors.photo ? 'border-red-500 bg-red-50' : 'border-gray-300 dark:border-gray-600 hover:border-[#0217f7] dark:hover:border-[#f5e102]'
@@ -204,7 +245,9 @@ function ClaimFormPage() {
                     <div className="w-12 h-12 mx-auto rounded-xl bg-gradient-to-br from-[#0217f7] to-[#010bb3] flex items-center justify-center">
                       <Upload size={24} className="text-[#f5e102]" />
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Click to upload proof image</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {isFoundFlow ? 'Click to upload item photo' : 'Click to upload proof image'}
+                    </p>
                     <p className="text-xs text-gray-400">JPG, PNG (Max 5MB)</p>
                   </div>
                 )}
@@ -227,7 +270,7 @@ function ClaimFormPage() {
                 {submitMutation.isPending ? (
                   <><Loader2 size={20} className="animate-spin" /> Submitting...</>
                 ) : (
-                  <><CheckCircle size={20} /> Submit Claim</>
+                  <><CheckCircle size={20} /> {isFoundFlow ? 'Submit to Admin' : 'Submit Claim'}</>
                 )}
               </button>
               <button 

@@ -66,7 +66,7 @@ def report_item():
         new_report = submit_report(data)
 
         # Process based on status
-        if status == 'lost' and image_url:
+        if status in ('lost', 'found') and image_url:
             # Process image to find matches
             new_claim, message, process_result = process_report_with_image_url(
                 image_url, data, new_report
