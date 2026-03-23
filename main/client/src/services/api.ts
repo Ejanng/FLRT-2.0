@@ -104,7 +104,7 @@ export const claimsApi = {
 };
 
 export const authApi = {
-  login: (email: string, password: string) => 
+login: (email: string, password: string) => 
     fetch(`${API_BASE_URL}/auth/admin-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
