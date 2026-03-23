@@ -18,7 +18,9 @@ import requests
 import re
 import time
 import io
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
+from typing import Optional, List, Dict, Any
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -42,16 +44,36 @@ TOKEN_FILE = os.path.join(RES_DIR, "token.pickle")
 DB_FILE = os.path.join(RES_DIR, "sift_database.pkl")
 IMAGE_DIR = os.path.join(RES_DIR, "train")
 
-# Debug output (remove after testing)
-print(f"SIFT module directory: {MODULE_DIR}")
-print(f"Resources directory: {RES_DIR}")
-print(f"Credentials file: {GDRIVE_CREDENTIALS}")
-print(f"   Credentials exist: {os.path.exists(GDRIVE_CREDENTIALS)}")
-print(f"Token file: {TOKEN_FILE}")
-print(f"   Token exists: {os.path.exists(TOKEN_FILE)}")
+SIFT_DEBUG = os.getenv('SIFT_DEBUG', '0').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _log(message: str, force: bool = False):
+    if force or SIFT_DEBUG:
+        print(message)
+
+_log(f"SIFT module directory: {MODULE_DIR}")
+_log(f"Resources directory: {RES_DIR}")
+_log(f"Credentials file: {GDRIVE_CREDENTIALS}")
+_log(f"   Credentials exist: {os.path.exists(GDRIVE_CREDENTIALS)}")
+_log(f"Token file: {TOKEN_FILE}")
+_log(f"   Token exists: {os.path.exists(TOKEN_FILE)}")
 
 # Use FULL ACCESS scope for everything (so token is consistent)
 SCOPES = ['https://www.googleapis.com/auth/drive']
+_DRIVE_SERVICE = None
+_MATCH_WORKERS = max(1, int(os.getenv('SIFT_MATCH_WORKERS', '1')))
+_DB_ENTRY_CACHE_KEY = None
+_DB_ENTRY_CACHE_VALUE = None
+
+
+def recommend_match_workers(db_size: int) -> int:
+    if db_size < 20:
+        return 1
+    if db_size < 80:
+        return 2
+    if db_size < 200:
+        return 4
+    return 6
 
 # Initiate SIFT detector
 try:
@@ -69,6 +91,10 @@ def get_drive_service():
     """
     Authenticate using OAuth (user account) - reuses saved token if available
     """
+    global _DRIVE_SERVICE
+    if _DRIVE_SERVICE is not None:
+        return _DRIVE_SERVICE
+
     creds = None
     
     # Load existing token
@@ -76,17 +102,17 @@ def get_drive_service():
         try:
             with open(TOKEN_FILE, 'rb') as token:
                 creds = pickle.load(token)
-            print(f"Key: Loaded saved credentials")
+            _log("Key: Loaded saved credentials", force=True)
         except Exception as e:
-            print(f"Error: Could not load token: {e}")
+            _log(f"Error: Could not load token: {e}", force=True)
             creds = None
     
     # If no valid credentials, get new ones
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            print("Refreshing expired token...")
+            _log("Refreshing expired token...", force=True)
             creds.refresh(Request())
-            print("Ok: Token refreshed!")
+            _log("Ok: Token refreshed!", force=True)
         else:
             if not os.path.exists(GDRIVE_CREDENTIALS):
                 raise FileNotFoundError(
@@ -96,23 +122,24 @@ def get_drive_service():
                     "   Please ensure client_secret.json is in sift/res/ folder"
                 )
             
-            print("Opening browser for Google authentication...")
-            print("   (This will only happen once)")
+            _log("Opening browser for Google authentication...", force=True)
+            _log("   (This will only happen once)", force=True)
             flow = InstalledAppFlow.from_client_secrets_file(
                 GDRIVE_CREDENTIALS,
                 scopes=SCOPES
             )
             creds = flow.run_local_server(port=0)
-            print("Ok: Authentication successful!")
+            _log("Ok: Authentication successful!", force=True)
         
         # Save token for future runs
         with open(TOKEN_FILE, 'wb') as token:
             pickle.dump(creds, token)
-            print(f"Credentials saved")
+            _log("Credentials saved", force=True)
     else:
-        print("Ok: Using existing valid credentials")
+        _log("Ok: Using existing valid credentials")
     
-    return build('drive', 'v3', credentials=creds)
+    _DRIVE_SERVICE = build('drive', 'v3', credentials=creds)
+    return _DRIVE_SERVICE
 
 
 def extract_gdrive_file_id(url):
@@ -162,13 +189,20 @@ def list_images_in_folder(service, folder_id):
              f"(mimeType contains 'image/jpeg' or mimeType contains 'image/png') "
              f"and trashed=false")
     
-    results = service.files().list(
-        q=query,
-        fields="files(id, name, mimeType, size)",
-        pageSize=1000
-    ).execute()
-    
-    return results.get('files', [])
+    files = []
+    page_token = None
+    while True:
+        results = service.files().list(
+            q=query,
+            fields="nextPageToken, files(id, name, mimeType, size)",
+            pageSize=1000,
+            pageToken=page_token,
+        ).execute()
+        files.extend(results.get('files', []))
+        page_token = results.get('nextPageToken')
+        if not page_token:
+            break
+    return files
 
 
 def download_image_from_drive(service, file_id):
@@ -292,6 +326,17 @@ def load_database():
             with open(DB_FILE, 'rb') as f:
                 db = pickle.load(f)
                 print(f"Success: Loaded database: {len(db)} objects")
+                recommended = recommend_match_workers(len(db))
+                if _MATCH_WORKERS != recommended:
+                    print(
+                        f"Info: Recommended SIFT_MATCH_WORKERS={recommended} for DB size={len(db)} "
+                        f"(current={_MATCH_WORKERS})"
+                    )
+                else:
+                    _log(
+                        f"Info: SIFT_MATCH_WORKERS={_MATCH_WORKERS} is optimal for DB size={len(db)}",
+                        force=True,
+                    )
                 return db
         except (EOFError, pickle.UnpicklingError) as e:
             print(f"Error: Corrupted database {DB_FILE}: {e}")
@@ -598,52 +643,32 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         result['error'] = error_msg
         return result
     
-    best_match = None
     best_good = 0
     best_entry = None  # Store the full database entry, not just name
-    all_matches = []
+    all_matches: List[Dict[str, Any]] = []
     
     print(f"\nMatching against {len(database)} database images...")
     
-    # Handle both old and new database formats
-    for entry in database:
-        # Support legacy format: (name, desc) tuple
-        if isinstance(entry, tuple):
-            img_name, desc_train = entry
-            entry_dict = {
-                'name': img_name,
-                'descriptors': desc_train,
-                'source_url': None,
-                'gdrive_file_id': None,
-                'source_type': 'legacy'
-            }
-        else:
-            # New format: dictionary
-            img_name = entry['name']
-            desc_train = entry['descriptors']
-            entry_dict = entry
-        
-        matches = flann.knnMatch(desc_test, desc_train, k=2)
-        
-        goodMatch = []
-        for m, n in matches:
-            if m.distance < 0.75 * n.distance:
-                goodMatch.append(m)
-        
-        # Store match with full entry info
+    normalized_entries = _normalize_database_entries(database)
+
+    if _MATCH_WORKERS > 1 and len(normalized_entries) >= 20:
+        with ThreadPoolExecutor(max_workers=_MATCH_WORKERS) as executor:
+            score_results = list(executor.map(lambda e: _score_entry(desc_test, e), normalized_entries))
+    else:
+        score_results = [_score_entry(desc_test, entry) for entry in normalized_entries]
+
+    for entry_dict, score in score_results:
         all_matches.append({
-            'name': img_name,
-            'score': len(goodMatch),
+            'name': entry_dict['name'],
+            'score': score,
             'source_url': entry_dict.get('source_url'),
             'gdrive_file_id': entry_dict.get('gdrive_file_id'),
             'gdrive_view_link': entry_dict.get('gdrive_view_link'),
             'source_type': entry_dict.get('source_type', 'unknown')
         })
-        
-        if len(goodMatch) > best_good:
-            best_good = len(goodMatch)
+        if score > best_good:
+            best_good = score
             best_entry = entry_dict
-            best_match = goodMatch
     
     # Sort all matches by score
     all_matches.sort(key=lambda x: x['score'], reverse=True)
@@ -717,6 +742,61 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         result['error'] = f"No match found (best score: {best_good}, threshold: {MIN_MATCH_COUNT})"
     
     return result
+
+
+def _normalize_database_entries(database: List[Any]) -> List[Dict[str, Any]]:
+    global _DB_ENTRY_CACHE_KEY, _DB_ENTRY_CACHE_VALUE
+
+    cache_key = (id(database), len(database))
+    if _DB_ENTRY_CACHE_KEY == cache_key and _DB_ENTRY_CACHE_VALUE is not None:
+        return _DB_ENTRY_CACHE_VALUE
+
+    normalized: List[Dict[str, Any]] = []
+    for entry in database:
+        if isinstance(entry, tuple):
+            img_name, desc_train = entry
+            normalized.append({
+                'name': img_name,
+                'descriptors': desc_train,
+                'source_url': None,
+                'gdrive_file_id': None,
+                'gdrive_view_link': None,
+                'source_type': 'legacy',
+            })
+        else:
+            normalized.append({
+                'name': entry.get('name', 'unknown'),
+                'descriptors': entry.get('descriptors'),
+                'source_url': entry.get('source_url'),
+                'gdrive_file_id': entry.get('gdrive_file_id'),
+                'gdrive_view_link': entry.get('gdrive_view_link'),
+                'source_type': entry.get('source_type', 'unknown'),
+            })
+
+    _DB_ENTRY_CACHE_KEY = cache_key
+    _DB_ENTRY_CACHE_VALUE = normalized
+    return normalized
+
+
+def _score_entry(desc_test: np.ndarray, entry_dict: Dict[str, Any]):
+    desc_train = entry_dict.get('descriptors')
+    if desc_train is None or len(desc_train) < 2:
+        return entry_dict, 0
+
+    try:
+        local_flann = cv2.FlannBasedMatcher(flannParam, {})
+        matches = local_flann.knnMatch(desc_test, desc_train, k=2)
+    except cv2.error:
+        return entry_dict, 0
+
+    score = 0
+    for pair in matches:
+        if len(pair) < 2:
+            continue
+        m, n = pair
+        if m.distance < 0.75 * n.distance:
+            score += 1
+    return entry_dict, score
 
 
 def build_database_live_capture():

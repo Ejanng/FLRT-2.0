@@ -13,6 +13,7 @@ os.makedirs(SIFT_DB_DIR, exist_ok=True)
 
 LOST_DB_FILE = os.path.join(SIFT_DB_DIR, 'lost_reports_sift_database.pkl')
 FOUND_DB_FILE = os.path.join(SIFT_DB_DIR, 'found_reports_sift_database.pkl')
+_AUTO_BUILD_EMPTY_ATTEMPTS: set[str] = set()
 
 
 def _extract_folder_id(folder_url_or_id: Optional[str]) -> Optional[str]:
@@ -40,21 +41,58 @@ def _folder_url_for_target_status(target_status: str) -> str:
     return Config.FOUND_REPORTS_GDRIVE_FOLDER_URL
 
 
-def _ensure_trained_database(target_status: str):
-    """Ensure status-specific DB exists; train from mapped Drive folder if missing/corrupt."""
+def _ensure_trained_database(target_status: str, auto_build: bool = True):
+    """
+    Load status-specific database.
+    
+    Args:
+        target_status: 'lost' or 'found'
+        auto_build: If True, auto-rebuild from Drive if missing/corrupt (manual retraining)
+                    If False, only load existing DB, no auto-build (during report submission)
+    
+    Returns:
+        (database, db_file) tuple or (None, db_file) if auto_build=False and DB missing
+    """
     db_file = _db_file_for_target_status(target_status)
     original_db_file = sift.DB_FILE
+    print(f"\n[DB LOAD] Switching to {target_status.upper()} database: {db_file} (auto_build={auto_build})")
+    
     try:
         sift.DB_FILE = db_file
-        database = sift.load_database()
-        if database:
-            return database, db_file
+        
+        if os.path.exists(db_file):
+            print(f"[DB LOAD] File exists, attempting to load: {db_file}")
+            database = sift.load_database()
+            if database is not None:
+                print(f"[DB LOAD] Successfully loaded {target_status} database with {len(database)} entries")
+                if len(database) > 0 and target_status in _AUTO_BUILD_EMPTY_ATTEMPTS:
+                    _AUTO_BUILD_EMPTY_ATTEMPTS.discard(target_status)
+                return database, db_file
+            else:
+                print(f"[DB LOAD] Database file corrupt or empty")
+        else:
+            print(f"[DB LOAD] Database file does not exist: {db_file}")
+        
+        # File missing or corrupt
+        if not auto_build:
+            print(f"[DB LOAD] auto_build=False, skipping automatic rebuild for {target_status} database")
+            print(f"[DB LOAD] → Admin must manually retrain via 'Retrain {target_status.upper()} DB' button")
+            return None, db_file
+        
+        if target_status in _AUTO_BUILD_EMPTY_ATTEMPTS:
+            print(f"[DB TRAIN] Skipping auto-build for {target_status} (already attempted and still empty in this server run)")
+            return None, db_file
 
+        # Auto-build only if explicitly enabled
         folder_url = _folder_url_for_target_status(target_status)
-        print(f"Training {target_status} database from: {folder_url}")
+        print(f"[DB TRAIN] auto_build=True, training {target_status} database from folder: {folder_url}")
         database = sift.build_database_from_gdrive(folder_url)
+        print(f"[DB TRAIN] Training complete. Database now has {len(database) if database else 0} entries")
+        if not database:
+            _AUTO_BUILD_EMPTY_ATTEMPTS.add(target_status)
         return database, db_file
     finally:
+        print(f"[DB LOAD] Restoring original DB_FILE")
         sift.DB_FILE = original_db_file
 
 def train_model(gdrive_url):
@@ -179,18 +217,29 @@ def process_image_for_report(image_url, report_status):
     Cross-match reports by status:
     - found report -> match against lost DB
     - lost report -> match against found DB
+
+    If the required target DB is missing/corrupt, auto-build it from the
+    mapped Drive folder so image-based report submissions can still match.
     Saves match visualization to match-results Drive folder.
     """
+    print(f"\n[MATCH] Starting image matching for report")
     normalized_status = (report_status or '').strip().lower()
+    print(f"[MATCH] Report status (as submitted): {normalized_status}")
+    
     target_status = 'lost' if normalized_status == 'found' else 'found'
+    print(f"[MATCH] Will search against: {target_status.upper()} database")
+    print(f"[MATCH] Reason: If user found item (status={normalized_status}), search for matching lost items")
 
-    database, db_file = _ensure_trained_database(target_status)
+    # Auto-build target DB only when missing/corrupt
+    database, db_file = _ensure_trained_database(target_status, auto_build=True)
     if not database:
+        print(f"[MATCH ERROR] {target_status.upper()} database not available")
         return {
             "success": False,
-            "error": f"No {target_status} database available for matching"
+            "error": f"No {target_status} database available for matching."
         }
 
+    print(f"[MATCH] Database ready ({len(database)} items). Starting matching process...")
     output_folder_id = _extract_folder_id(Config.MATCH_RESULTS_GDRIVE_FOLDER_URL) or DEFAULT_GDRIVE_OUTPUT_FOLDER_ID
 
     result = sift.detect_from_database(image_url, database, output_folder_id)
