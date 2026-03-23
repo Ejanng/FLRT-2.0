@@ -20,6 +20,9 @@ __pycache__/
 # Logs
 *.log
 
+# Pickle files (if you use for caching or temporary storage)
+*.pkl
+
 # Migrations (optional, if using Alembic)
 alembic/versions/*.pyc
 alembic/versions/*.py
