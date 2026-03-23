@@ -12,6 +12,7 @@ from reports.services import (
 from found_items.services import create_found_item
 from sift.services import upload_report_image_by_status
 from auth.decorators import auth_required, admin_required
+from core.notifications import send_discord_notification
 import os
 
 report_bp = Blueprint('reports', __name__)
@@ -77,6 +78,21 @@ def report_item():
         
         # Create the report
         new_report = submit_report(data, image_url=image_url)
+
+        if status == 'found':
+            send_discord_notification(
+                title='New Found Report Needs Review',
+                description='A new found-item report was submitted and needs admin action.',
+                audience='admin',
+                fields=[
+                    {'name': 'Report ID', 'value': str(new_report.report_id), 'inline': True},
+                    {'name': 'Status', 'value': status or 'N/A', 'inline': True},
+                    {'name': 'Item', 'value': item_name or 'N/A', 'inline': False},
+                    {'name': 'Finder Name', 'value': student_name or 'N/A', 'inline': True},
+                    {'name': 'Finder Student #', 'value': student_number or 'N/A', 'inline': True},
+                    {'name': 'Finder Contact', 'value': contact_info or 'N/A', 'inline': False},
+                ],
+            )
 
         if status == 'found' and all([student_name, student_number, contact_info]):
             try:
@@ -174,7 +190,19 @@ def publish_report():
     
     if error:
         return jsonify({"error": error}), 400
-    
+
+    send_discord_notification(
+        title='FLIRT Announcement',
+        description='A new item has been published and is now open for claims.',
+        audience='users',
+        fields=[
+            {'name': 'Report ID', 'value': str(report.report_id), 'inline': True},
+            {'name': 'Status', 'value': report.status, 'inline': True},
+            {'name': 'Item', 'value': report.item_name, 'inline': False},
+            {'name': 'Location', 'value': report.location or 'N/A', 'inline': False},
+        ],
+    )
+
     return jsonify({
         "message": "Report published successfully",
         "report": report.to_json()
@@ -210,7 +238,7 @@ def delete_report_route(report_id):
     
     if error:
         return jsonify({"error": error}), 404
-    
+
     return jsonify({
         "message": "Report deleted successfully",
         "report_id": report_id

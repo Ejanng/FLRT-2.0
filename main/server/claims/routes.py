@@ -6,6 +6,7 @@ from models.found_items_model import FoundItems
 from core.extensions import db
 from datetime import datetime, timezone
 from sift.services import upload_manual_claim_image, archive_returned_item_images
+from core.notifications import send_discord_notification
 
 claim_bp = Blueprint('claims', __name__)
 
@@ -78,7 +79,18 @@ def submit_claim():
         
         db.session.add(new_claim)
         db.session.commit()
-        
+
+        send_discord_notification(
+            title='New Claim Needs Verification',
+            description='A new claim is pending admin review. Open Admin Dashboard → Verify Claims.',
+            audience='admin',
+            fields=[
+                {'name': 'Claim ID', 'value': str(new_claim.claim_id), 'inline': True},
+                {'name': 'Report ID', 'value': str(new_claim.report_id), 'inline': True},
+                {'name': 'Claimant', 'value': student_name or 'N/A', 'inline': False},
+            ],
+        )
+
         return jsonify({
             "message": "Claim submitted successfully",
             "claim": new_claim.to_json()
@@ -147,6 +159,7 @@ def review_claim(claim_id):
         data = request.get_json()
         action = data.get('action')  # 'approve' or 'reject'
         admin_id = data.get('admin_id', 1)  # Default admin ID
+        return_announcement = None
         
         claim = PendingClaims.query.get(claim_id)
         if not claim:
@@ -217,6 +230,13 @@ def review_claim(claim_id):
                 image=claim.image
             )
             db.session.add(return_record)
+            return_announcement = {
+                'report_id': claim.report_id,
+                'item_name': report.item_name if report else 'N/A',
+                'location': report.location if report else 'N/A',
+                'returned_at': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'),
+                'admin_id': admin_id,
+            }
             
         elif action == 'reject':
             claim.status = 'rejected'
@@ -224,7 +244,33 @@ def review_claim(claim_id):
             return jsonify({"error": "Invalid action. Use 'approve' or 'reject'"}), 400
         
         db.session.commit()
-        
+
+        send_discord_notification(
+            title='Claim Verification Update',
+            description=f'A claim was {action}d during Verify Claims.',
+            audience='admin',
+            fields=[
+                {'name': 'Claim ID', 'value': str(claim.claim_id), 'inline': True},
+                {'name': 'Report ID', 'value': str(claim.report_id), 'inline': True},
+                {'name': 'Admin ID', 'value': str(admin_id), 'inline': True},
+                {'name': 'Result', 'value': claim.status, 'inline': True},
+            ],
+        )
+
+        if return_announcement:
+            send_discord_notification(
+                title='FLIRT Return Update',
+                description='An item has been successfully returned to its rightful owner.',
+                audience='users',
+                fields=[
+                    {'name': 'Report ID', 'value': str(return_announcement['report_id']), 'inline': True},
+                    {'name': 'Admin ID', 'value': str(return_announcement['admin_id']), 'inline': True},
+                    {'name': 'Returned At', 'value': return_announcement['returned_at'], 'inline': True},
+                    {'name': 'Item', 'value': return_announcement['item_name'] or 'N/A', 'inline': False},
+                    {'name': 'Location', 'value': return_announcement['location'] or 'N/A', 'inline': False},
+                ],
+            )
+
         return jsonify({
             "message": f"Claim {action}d successfully",
             "claim": claim.to_json()

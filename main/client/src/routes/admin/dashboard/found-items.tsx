@@ -7,6 +7,7 @@ import { foundItemsApi } from '../../../services/api'
 import { requireAdminAuth } from '../../../utils/adminAuth'
 
 const ITEMS_PER_PAGE = 8
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 interface FoundItem {
   found_item_id: number
@@ -147,7 +148,7 @@ function FoundItemsPage() {
     }
 
     if (imagePath.startsWith('http')) return imagePath
-    return `http://192.168.1.131:5000/found-items/images/${encodeURIComponent(imagePath)}`
+    return `${API_BASE_URL}/found-items/images/${encodeURIComponent(imagePath)}`
   }
 
   return (
@@ -176,6 +177,12 @@ function FoundItemsPage() {
             </button>
             <button className="px-4 py-2 rounded-xl bg-[#0217f7] text-white text-sm font-medium whitespace-nowrap">
               Found Items
+            </button>
+            <button
+              onClick={() => navigate({ to: '/admin/dashboard/returned' })}
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
+            >
+              Returned Reports
             </button>
           </div>
 

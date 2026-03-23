@@ -1,5 +1,5 @@
 // client/src/services/api.ts
-const API_BASE_URL = 'http://192.168.1.131:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const getAuthHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('admin_token');
@@ -138,6 +138,9 @@ export const siftApi = {
   retrainByStatus: (status: 'lost' | 'found') => fetchWithAuth('/sift/admin/retrain', {
     method: 'POST',
     body: JSON.stringify({ status }),
+  }),
+  testWebhooks: () => fetchWithAuth('/sift/admin/test-webhooks', {
+    method: 'POST',
   }),
   process: (imageUrl: string) => fetchWithAuth('/sift/process', {
     method: 'POST',

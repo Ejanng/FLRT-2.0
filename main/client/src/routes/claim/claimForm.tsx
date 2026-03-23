@@ -35,7 +35,7 @@ function ClaimFormPage() {
   const [formData, setFormData] = useState({
     claimantName: '',
     claimantId: '',
-    claimantEmail: '',
+    claimantContactInfo: '',
     description: '',
   })
   const [photoFile, setPhotoFile] = useState<File | null>(null)
@@ -74,15 +74,11 @@ function ClaimFormPage() {
 
   const validate = () => {
     const newErrors: Record<string, string> = {}
+
     if (!formData.claimantName.trim()) newErrors.claimantName = 'Name is required'
     if (!formData.claimantId.trim()) newErrors.claimantId = 'Student number is required'
-    if (!formData.claimantEmail.trim()) {
-      newErrors.claimantEmail = isFoundFlow ? 'Contact is required' : 'Email is required'
-    } else if (
-      (isFoundFlow && !formData.claimantEmail.includes('@') && !formData.claimantEmail.startsWith('0')) ||
-      (!isFoundFlow && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.claimantEmail))
-    ) {
-      newErrors.claimantEmail = isFoundFlow ? 'Enter a valid email or phone number' : 'Invalid email format'
+    if (!formData.claimantContactInfo.trim()) {
+      newErrors.claimantContactInfo = 'Contact is required'
     }
     if (!formData.description.trim()) {
       newErrors.description = isFoundFlow
@@ -105,7 +101,7 @@ function ClaimFormPage() {
       // Found items submission
       formDataToSend.append('finder_name', formData.claimantName)
       formDataToSend.append('finder_student_number', formData.claimantId)
-      formDataToSend.append('finder_contact_info', formData.claimantEmail)
+      formDataToSend.append('finder_contact_info', formData.claimantContactInfo)
       formDataToSend.append('item_name', name)
       formDataToSend.append('item_description', formData.description)
       formDataToSend.append('item_location', location)
@@ -116,7 +112,8 @@ function ClaimFormPage() {
       formDataToSend.append('report_id', id)
       formDataToSend.append('claimantName', formData.claimantName)
       formDataToSend.append('claimantId', formData.claimantId)
-      formDataToSend.append('claimantEmail', formData.claimantEmail)
+      formDataToSend.append('claimantEmail', formData.claimantContactInfo)
+      formDataToSend.append('contact_info', formData.claimantContactInfo)
       formDataToSend.append('description', formData.description)
     }
     
@@ -192,16 +189,16 @@ function ClaimFormPage() {
             <div>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
                 <Mail size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
-                {isFoundFlow ? 'Contact (Email or Phone)' : 'Email'} <span className="text-red-500">*</span>
+                Contacts <span className="text-red-500">*</span>
               </label>
               <input 
-                type={isFoundFlow ? 'text' : 'email'} 
-                value={formData.claimantEmail}
-                onChange={(e) => setFormData(prev => ({ ...prev, claimantEmail: e.target.value }))}
-                placeholder={isFoundFlow ? 'juandelacruz@gmail.com or 09123456789' : 'juandelacruz@gmail.com'}
-                className={`input-field ${errors.claimantEmail ? 'border-red-500' : ''}`}
+                type="text"
+                value={formData.claimantContactInfo}
+                onChange={(e) => setFormData(prev => ({ ...prev, claimantContactInfo: e.target.value }))}
+                placeholder="Email or phone number"
+                className={`input-field ${errors.claimantContactInfo ? 'border-red-500' : ''}`}
               />
-              {errors.claimantEmail && <p className="text-red-500 text-xs mt-1">{errors.claimantEmail}</p>}
+              {errors.claimantContactInfo && <p className="text-red-500 text-xs mt-1">{errors.claimantContactInfo}</p>}
             </div>
 
             <div>

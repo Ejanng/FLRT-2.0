@@ -7,6 +7,7 @@ import { reportsApi } from '../../../services/api'
 import { requireAdminAuth } from '../../../utils/adminAuth'
 
 const ITEMS_PER_PAGE = 10
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
 interface Report {
   report_id: string
@@ -43,17 +44,41 @@ function ReportsPage() {
   const [coordinationNotes, setCoordinationNotes] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [search, setSearch] = useState('')
 
   const { data: reportsData, isLoading } = useQuery({
     queryKey: ['all-reports'],
     queryFn: reportsApi.getAll,
   })
 
-  const reports = (reportsData?.reports || []).filter((report: Report) => !report.has_pending_claim)
-  const totalPages = Math.max(1, Math.ceil(reports.length / ITEMS_PER_PAGE))
+  const reports = (reportsData?.reports || []).filter(
+    (report: Report) => !report.has_pending_claim && (report.status || '').toLowerCase() !== 'returned',
+  )
+  const filteredReports = reports.filter((report: Report) => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+
+    const reportId = String(report.report_id || '').toLowerCase()
+    const itemName = (report.item_name || '').toLowerCase()
+    const location = (report.location || '').toLowerCase()
+    const dateRaw = String(report.date_reported || '').toLowerCase()
+    const dateFormatted = report.date_reported
+      ? new Date(report.date_reported).toLocaleDateString().toLowerCase()
+      : ''
+
+    return (
+      reportId.includes(q) ||
+      itemName.includes(q) ||
+      location.includes(q) ||
+      dateRaw.includes(q) ||
+      dateFormatted.includes(q)
+    )
+  })
+
+  const totalPages = Math.max(1, Math.ceil(filteredReports.length / ITEMS_PER_PAGE))
   const currentPageSafe = Math.min(currentPage, totalPages)
   const startIndex = (currentPageSafe - 1) * ITEMS_PER_PAGE
-  const paginatedReports = reports.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  const paginatedReports = filteredReports.slice(startIndex, startIndex + ITEMS_PER_PAGE)
 
   const publishMutation = useMutation({
     mutationFn: ({ reportId, category }: { reportId: number; category: string }) => reportsApi.publish(reportId, category),
@@ -148,6 +173,10 @@ function ReportsPage() {
 
   const handlePublish = () => {
     if (!selectedReport) return
+    if ((selectedReport.status || '').toLowerCase() === 'returned') {
+      setMessage('Returned reports cannot be published again. Review them in Returned Reports page.')
+      return
+    }
     if (!selectedCategory.trim()) {
       setMessage('Please select a category before publishing')
       return
@@ -194,7 +223,7 @@ function ReportsPage() {
     }
 
     if (imagePath.startsWith('http')) return imagePath
-    return `http://192.168.1.131:5000/reports/images/${encodeURIComponent(imagePath)}`
+    return `${API_BASE_URL}/reports/images/${encodeURIComponent(imagePath)}`
   }
 
   const getDrivePreviewUrl = (url: string) => {
@@ -239,12 +268,27 @@ function ReportsPage() {
             >
               Found Items
             </button>
+            <button
+              onClick={() => navigate({ to: '/admin/dashboard/returned' })}
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
+            >
+              Returned Reports
+            </button>
           </div>
 
           <div className="p-4 border-b border-gray-200 dark:border-gray-800">
             <div className="relative max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input type="text" placeholder="Search reports..." className="input-field pl-10" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  setCurrentPage(1)
+                }}
+                placeholder="Search by ID, name, location, or date..."
+                className="input-field pl-10"
+              />
             </div>
           </div>
 
@@ -267,9 +311,9 @@ function ReportsPage() {
                       <Loader2 className="animate-spin mx-auto text-[#0217f7]" size={24} />
                     </td>
                   </tr>
-                ) : reports.length === 0 ? (
+                ) : filteredReports.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">No reports found</td>
+                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">No matching reports found</td>
                   </tr>
                 ) : (
                   paginatedReports.map((report: Report) => (
@@ -296,10 +340,10 @@ function ReportsPage() {
             </table>
           </div>
 
-          {!isLoading && reports.length > 0 && (
+          {!isLoading && filteredReports.length > 0 && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border-t border-gray-200 dark:border-gray-800">
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, reports.length)} of {reports.length} reports
+                Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, filteredReports.length)} of {filteredReports.length} reports
               </p>
               <div className="flex items-center gap-2 self-start sm:self-auto">
                 <button

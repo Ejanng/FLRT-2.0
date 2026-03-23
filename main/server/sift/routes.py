@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from sift.services import train_model, process_image, retrain_model_for_status
 from core.config import Config
+from core.notifications import test_discord_webhooks
 from auth.decorators import auth_required, admin_required
 
 sift_bp = Blueprint('sift', __name__)
@@ -47,4 +48,19 @@ def retrain_status_dataset(current_user):
         "message": f"Retrained {status} dataset successfully",
         "result": result
     }), 200
+
+
+@sift_bp.route('/admin/test-webhooks', methods=['POST'])
+@auth_required
+@admin_required
+def test_webhooks(current_user):
+    results = test_discord_webhooks()
+    admin_success = results.get('admin', {}).get('success', False)
+    users_success = results.get('users', {}).get('success', False)
+
+    status_code = 200 if admin_success and users_success else 207
+    return jsonify({
+        'message': 'Discord webhook test completed',
+        'results': results,
+    }), status_code
 

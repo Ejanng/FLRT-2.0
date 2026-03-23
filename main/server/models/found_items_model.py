@@ -49,7 +49,7 @@ class FoundItems(db.Model):
     
     # Admin interaction
     admin_id = db.Column(db.Integer, db.ForeignKey('admins.admin_id', ondelete='SET NULL'), nullable=True)
-    admin = db.relationship("Admins", lazy="select")
+    admin = db.relationship("Admins", back_populates="found_items", lazy="select")
 
     def to_json(self):
         return {

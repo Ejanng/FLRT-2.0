@@ -58,3 +58,10 @@ class Config:
         'https://drive.google.com/drive/folders/121Lh3QbwYRHcgKfIBLkTc4KUJsFnv_r8?usp=drive_link'
     )
 
+    DISCORD_SERVER_INVITE_URL = os.getenv(
+        'DISCORD_SERVER_INVITE_URL',
+        'https://discord.gg/TWPsZHvhH3'
+    )
+    DISCORD_ADMIN_WEBHOOK_URL = os.getenv('DISCORD_ADMIN_WEBHOOK_URL')
+    DISCORD_USER_WEBHOOK_URL = os.getenv('DISCORD_USER_WEBHOOK_URL')
+

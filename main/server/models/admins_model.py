@@ -24,7 +24,12 @@ class Admins(db.Model):
     date_updated = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)  # date when the admin account was last updated
 
     returns = db.relationship("Returns", back_populates="admin", lazy="select", passive_deletes=True)
-    found_items = db.relationship("FoundItems", lazy="select", passive_deletes=True)
+    found_items = db.relationship(
+        "FoundItems",
+        back_populates="admin",
+        lazy="select",
+        passive_deletes=True,
+    )
 
     def to_json(self):
         return {

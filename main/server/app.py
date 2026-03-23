@@ -8,6 +8,7 @@ from stats.routes import stats_bp  # New!
 from found_items.routes import found_items_bp  # New!
 from models import *
 from sift.routes import sift_bp
+from core.notifications import is_valid_discord_webhook_url
 
 def create_app():
     app = Flask(__name__)
@@ -40,6 +41,17 @@ def create_app():
     print("✅ App initialized successfully")
     print(f"   Database: {Config.SQLALCHEMY_DATABASE_URI}")
     print(f"   Registered blueprints: auth, reports, claims, stats, found-items, sift")
+    if Config.DISCORD_ADMIN_WEBHOOK_URL:
+        admin_status = 'valid' if is_valid_discord_webhook_url(Config.DISCORD_ADMIN_WEBHOOK_URL) else 'invalid'
+        print(f"   Discord admin webhook: configured ({admin_status})")
+    else:
+        print("   Discord admin webhook: not configured")
+
+    if Config.DISCORD_USER_WEBHOOK_URL:
+        user_status = 'valid' if is_valid_discord_webhook_url(Config.DISCORD_USER_WEBHOOK_URL) else 'invalid'
+        print(f"   Discord user webhook: configured ({user_status})")
+    else:
+        print("   Discord user webhook: not configured")
 
     return app
 

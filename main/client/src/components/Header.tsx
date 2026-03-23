@@ -1,12 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { Menu, X, Home, FileText, Search, Shield, Sun, Moon, Info } from 'lucide-react'
-import { useTheme } from '../context/ThemeContext'
+import { Menu, X, Home, FileText, Search, Shield, Info } from 'lucide-react'
 import { hasValidAdminSession } from '../utils/adminAuth'
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false)
-  const { theme, toggleTheme } = useTheme()
 
   // Simple path detection without useRouter
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/'
@@ -62,21 +60,9 @@ export default function Header() {
               )
             })}
             
-            <button
-              onClick={toggleTheme}
-              className="ml-4 p-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-[#f5e102] hover:bg-[#0217f7] hover:text-white transition-all"
-            >
-              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-            </button>
           </nav>
 
           <div className="flex items-center gap-2 md:hidden">
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800"
-            >
-              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-            </button>
             <button
               onClick={() => setIsOpen(true)}
               className="p-2 rounded-lg bg-gradient-to-r from-[#0217f7] to-[#010bb3] text-white"

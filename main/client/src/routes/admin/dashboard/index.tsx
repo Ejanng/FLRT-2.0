@@ -6,6 +6,8 @@ import { Box, Clock, CheckCircle, TrendingUp, Search, LogOut, Loader2, RefreshCw
 import { statsApi, authApi, siftApi } from '../../../services/api'
 import { requireAdminAuth } from '../../../utils/adminAuth'
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+
 interface DashboardStats {
   total_reports: number
   pending_claims: number
@@ -26,6 +28,22 @@ interface Report {
   status: string
 }
 
+interface WebhookTestStatus {
+  configured: boolean
+  valid_format: boolean
+  webhook_ref?: string | null
+  success: boolean
+  error: string | null
+}
+
+interface WebhookTestResponse {
+  message: string
+  results: {
+    admin: WebhookTestStatus
+    users: WebhookTestStatus
+  }
+}
+
 export const Route = createFileRoute('/admin/dashboard/')({
   beforeLoad: () => {
     requireAdminAuth()
@@ -37,6 +55,8 @@ function DashboardPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [retrainMessage, setRetrainMessage] = useState('')
+  const [webhookTestResult, setWebhookTestResult] = useState<WebhookTestResponse | null>(null)
+  const [webhookTestMessage, setWebhookTestMessage] = useState('')
 
   // Fetch dashboard stats with auto-refresh every 30 seconds
   const { 
@@ -58,7 +78,7 @@ function DashboardPage() {
   } = useQuery({
     queryKey: ['recent-reports'],
     queryFn: async () => {
-      const res = await fetch('http://192.168.1.131:5000/reports/all-reports')
+      const res = await fetch(`${API_BASE_URL}/reports/all-reports`)
       if (!res.ok) throw new Error('Failed to fetch')
       const data = await res.json()
       return data.reports?.slice(0, 5) || []
@@ -139,6 +159,19 @@ function DashboardPage() {
     },
   })
 
+  const webhookTestMutation = useMutation({
+    mutationFn: () => siftApi.testWebhooks() as Promise<WebhookTestResponse>,
+    onSuccess: (data) => {
+      setWebhookTestResult(data)
+      setWebhookTestMessage('Webhook test completed.')
+      setTimeout(() => setWebhookTestMessage(''), 3000)
+    },
+    onError: (error: any) => {
+      setWebhookTestMessage(error?.message || 'Webhook test failed')
+      setTimeout(() => setWebhookTestMessage(''), 4000)
+    },
+  })
+
   // Listen for storage events to refresh data
   useEffect(() => {
     const handleStorage = () => {
@@ -152,10 +185,20 @@ function DashboardPage() {
   return (
     <div className="min-h-screen p-3 sm:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header with Logout and Refresh */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        {/* Header with Logout and Actions */}
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
+            >
+              <LogOut size={18} />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 sm:justify-end">
             <button
               onClick={() => retrainMutation.mutate('lost')}
               disabled={retrainMutation.isPending}
@@ -181,16 +224,77 @@ function DashboardPage() {
               Refresh
             </button>
             <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
+              onClick={() => webhookTestMutation.mutate()}
+              disabled={webhookTestMutation.isPending}
+              className="px-2.5 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+              title="Send test Discord webhook notifications"
             >
-              <LogOut size={18} />
-              Logout
+              {webhookTestMutation.isPending ? 'Testing...' : 'Test Webhooks'}
             </button>
           </div>
         </div>
         {retrainMessage && (
           <p className="text-xs text-[#0217f7] dark:text-[#f5e102] -mt-3">{retrainMessage}</p>
+        )}
+        {webhookTestMessage && (
+          <p className="text-xs text-[#0217f7] dark:text-[#f5e102] -mt-2">{webhookTestMessage}</p>
+        )}
+        {webhookTestResult?.results && (
+          <div className="glass-card rounded-xl p-4 text-xs text-gray-700 dark:text-gray-200 space-y-2">
+            <p className="font-semibold text-gray-900 dark:text-white">Discord Webhook Test Result</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                <p className="font-medium mb-1">FLIRT Announcement Webhook (Admin)</p>
+                {webhookTestResult.results.admin.webhook_ref && (
+                  <p>Ref: {webhookTestResult.results.admin.webhook_ref}</p>
+                )}
+                <p>
+                  Configured:{' '}
+                  <span className={webhookTestResult.results.admin.configured ? 'text-green-600' : 'text-red-500'}>
+                    {String(webhookTestResult.results.admin.configured)}
+                  </span>
+                </p>
+                <p>
+                  Valid URL:{' '}
+                  <span className={webhookTestResult.results.admin.valid_format ? 'text-green-600' : 'text-red-500'}>
+                    {String(webhookTestResult.results.admin.valid_format)}
+                  </span>
+                </p>
+                <p>
+                  Success:{' '}
+                  <span className={webhookTestResult.results.admin.success ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'}>
+                    {String(webhookTestResult.results.admin.success)}
+                  </span>
+                </p>
+                {webhookTestResult.results.admin.error && <p>Error: {webhookTestResult.results.admin.error}</p>}
+              </div>
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                <p className="font-medium mb-1">Secondary/User Webhook (Optional)</p>
+                {webhookTestResult.results.users.webhook_ref && (
+                  <p>Ref: {webhookTestResult.results.users.webhook_ref}</p>
+                )}
+                <p>
+                  Configured:{' '}
+                  <span className={webhookTestResult.results.users.configured ? 'text-green-600' : 'text-red-500'}>
+                    {String(webhookTestResult.results.users.configured)}
+                  </span>
+                </p>
+                <p>
+                  Valid URL:{' '}
+                  <span className={webhookTestResult.results.users.valid_format ? 'text-green-600' : 'text-red-500'}>
+                    {String(webhookTestResult.results.users.valid_format)}
+                  </span>
+                </p>
+                <p>
+                  Success:{' '}
+                  <span className={webhookTestResult.results.users.success ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'}>
+                    {String(webhookTestResult.results.users.success)}
+                  </span>
+                </p>
+                {webhookTestResult.results.users.error && <p>Error: {webhookTestResult.results.users.error}</p>}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Stats Grid */}
@@ -259,6 +363,12 @@ function DashboardPage() {
               className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
             >
               Found Items
+            </button>
+            <button
+              onClick={() => navigate({ to: '/admin/dashboard/returned' })}
+              className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-sm font-medium whitespace-nowrap"
+            >
+              Returned Reports
             </button>
           </div>
 
