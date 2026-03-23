@@ -11,10 +11,33 @@ from found_items.services import (
     contact_finder_by_report,
     verify_found_item_by_report
 )
+from auth.token import decode_access_token
 from datetime import datetime, timezone
 import os
 
 found_items_bp = Blueprint('found_items', __name__)
+
+
+def _extract_admin_id(request_data=None):
+    data = request_data or {}
+    admin_id = data.get('admin_id')
+    if admin_id is not None:
+        try:
+            return int(admin_id)
+        except (TypeError, ValueError):
+            return None
+
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header.split(' ', 1)[1].strip()
+        payload = decode_access_token(token)
+        if payload:
+            subject = payload.get('sub')
+            try:
+                return int(subject) if subject is not None else None
+            except (TypeError, ValueError):
+                return None
+    return None
 
 @found_items_bp.route('/submit', methods=['POST', 'OPTIONS'])
 def submit_found_item():
@@ -116,11 +139,12 @@ def contact_found_item(found_item_id):
     try:
         data = request.get_json() or {}
         admin_notes = data.get('admin_notes')
+        admin_id = _extract_admin_id(data)
         
         if not admin_notes:
             return jsonify({"error": "Admin notes are required"}), 400
         
-        result = contact_finder(found_item_id, admin_notes)
+        result = contact_finder(found_item_id, admin_notes, admin_id)
         if not result:
             return jsonify({"error": "Found item not found"}), 404
         
@@ -138,11 +162,12 @@ def contact_found_item_by_report(report_id):
     try:
         data = request.get_json() or {}
         admin_notes = data.get('admin_notes')
+        admin_id = _extract_admin_id(data)
 
         if not admin_notes:
             return jsonify({"error": "Admin notes are required"}), 400
 
-        result = contact_finder_by_report(report_id, admin_notes)
+        result = contact_finder_by_report(report_id, admin_notes, admin_id)
         if not result:
             return jsonify({"error": "Found report coordination record not found"}), 404
 
@@ -159,8 +184,9 @@ def verify_found_item_report(report_id):
     try:
         data = request.get_json() or {}
         admin_notes = data.get('admin_notes')
+        admin_id = _extract_admin_id(data)
 
-        result = verify_found_item_by_report(report_id, admin_notes)
+        result = verify_found_item_by_report(report_id, admin_notes, admin_id)
         if not result:
             return jsonify({"error": "Found report coordination record not found"}), 404
 

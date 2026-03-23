@@ -47,7 +47,7 @@ def get_found_item_by_report_id(report_id):
         return None
     return FoundItems.query.filter_by(report_id=report_id).first()
 
-def contact_finder_by_report(report_id, admin_notes):
+def contact_finder_by_report(report_id, admin_notes, admin_id=None):
     """Contact finder for a found report by report ID."""
     item = get_found_item_by_report_id(report_id)
     if not item:
@@ -56,10 +56,12 @@ def contact_finder_by_report(report_id, admin_notes):
     item.status = 'contacted'
     item.admin_notes = admin_notes
     item.date_contacted = datetime.now(timezone.utc)
+    if admin_id is not None:
+        item.admin_id = admin_id
     db.session.commit()
     return item.to_json()
 
-def verify_found_item_by_report(report_id, admin_notes=None):
+def verify_found_item_by_report(report_id, admin_notes=None, admin_id=None):
     """Mark found report coordination as verified by report ID."""
     item = get_found_item_by_report_id(report_id)
     if not item:
@@ -70,10 +72,12 @@ def verify_found_item_by_report(report_id, admin_notes=None):
         item.admin_notes = admin_notes
     if not item.date_contacted:
         item.date_contacted = datetime.now(timezone.utc)
+    if admin_id is not None:
+        item.admin_id = admin_id
     db.session.commit()
     return item.to_json()
 
-def contact_finder(found_item_id, admin_notes):
+def contact_finder(found_item_id, admin_notes, admin_id=None):
     """Mark found item as contacted and store admin notes."""
     item = FoundItems.query.get(found_item_id)
     if not item:
@@ -82,6 +86,8 @@ def contact_finder(found_item_id, admin_notes):
     item.status = 'contacted'
     item.admin_notes = admin_notes
     item.date_contacted = datetime.now(timezone.utc)
+    if admin_id is not None:
+        item.admin_id = admin_id
     db.session.commit()
     return item.to_json()
 

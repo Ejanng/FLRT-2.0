@@ -51,9 +51,11 @@ def get_all_reports():
             payload['finder_student_number'] = linked_found_item.finder_student_number
             payload['coordination_status'] = linked_found_item.status
             payload['coordination_notes'] = linked_found_item.admin_notes
+            payload['coordination_admin_id'] = linked_found_item.admin_id
             payload['date_contacted'] = linked_found_item.date_contacted.isoformat() if linked_found_item.date_contacted else None
         else:
             payload['coordination_status'] = None
+            payload['coordination_admin_id'] = None
 
         payload['public_match_link'] = linked_pending_claim.image if linked_pending_claim else None
         payload['has_pending_claim'] = any(claim.status == 'pending' for claim in report_claims)
@@ -160,17 +162,21 @@ def process_report_with_image_url(image_url, data, new_report):
     result = process_image_for_report(image_url, report_status)
 
     if not result:
-        return None, "Image processing failed", "Error"
+        return None, "Image processing failed", "Error", None
 
     if not result.get('success'):
-        return None, "No match found in database. Report recorded for manual review.", "No Match"
+        return None, "No match found in database. Report recorded for manual review.", "No Match", None
     
     student_name = data.get('student_name')
     student_number = data.get('student_number')
     contact_info = data.get('contact_info')
 
     if not student_name or not student_number or not contact_info:
-        return None, "Match found but missing required claim information", "Incomplete Data"
+        return None, "Match found but missing required claim information", "Incomplete Data", {
+            "matched_image": result.get("matched_image", {}),
+            "match_score": int(result.get("match_score", 0)),
+            "target_status": result.get("target_status"),
+        }
 
     matched_name = result.get("matched_image", {}).get("name")
     matched_source = result.get("matched_image", {}).get("source_url")
@@ -195,9 +201,48 @@ def process_report_with_image_url(image_url, data, new_report):
         db.session.add(new_claim)
         db.session.commit()
         
-        return new_claim, f"Match found ({matched_name}). Pending claim created.", "Approved"
+        return new_claim, f"Match found ({matched_name}). Pending claim created.", "Approved", None
         
     except Exception as e:
         db.session.rollback()
         print(f"Database error creating claim: {e}")
-        return None, "Match found but failed to create claim", "Database Error"
+        return None, "Match found but failed to create claim", "Database Error", None
+
+
+def create_pending_claim_for_existing_report(report_id, data, matched_image_source=None):
+    """Create pending claim for an already-matched report without reprocessing image."""
+    report = Reports.query.get(report_id)
+    if not report:
+        return None, "Report not found"
+
+    student_name = data.get('student_name')
+    student_number = data.get('student_number')
+    contact_info = data.get('contact_info')
+
+    if not student_name or not student_number or not contact_info:
+        return None, "Missing required claim information"
+
+    existing_claim = PendingClaims.query.filter_by(
+        report_id=report_id,
+        student_number=student_number
+    ).first()
+    if existing_claim:
+        return None, "You have already submitted a claim for this matched report"
+
+    try:
+        new_claim = PendingClaims(
+            report_id=report_id,
+            student_name=student_name,
+            student_number=student_number,
+            contact_info=contact_info,
+            description=data.get('description') or report.description or '',
+            status='pending',
+            image=matched_image_source or report.image
+        )
+        db.session.add(new_claim)
+        db.session.commit()
+        return new_claim, None
+    except Exception as e:
+        db.session.rollback()
+        print(f"Database error creating claim for existing report: {e}")
+        return None, "Failed to create pending claim"

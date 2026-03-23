@@ -7,7 +7,8 @@ from reports.services import (
     delete_report,
     get_report_by_id,
     update_report_status,
-    process_report_with_image_url
+    process_report_with_image_url,
+    create_pending_claim_for_existing_report,
 )
 from found_items.services import create_found_item
 from sift.services import upload_report_image_by_status
@@ -21,6 +22,10 @@ report_bp = Blueprint('reports', __name__)
 def report_item():
     try:
         print(f"Content-Type: {request.content_type}")
+
+        existing_report_id = request.form.get('existing_report_id')
+        matched_image_source = request.form.get('matched_image_source')
+        existing_report_flow = request.form.get('existing_report_flow') == '1'
         
         # Get form data
         item_name = request.form.get('item_name')
@@ -35,6 +40,31 @@ def report_item():
         student_name = request.form.get('student_name')
         student_number = request.form.get('student_number')
         contact_info = request.form.get('contact_info')
+
+        if existing_report_flow and not existing_report_id:
+            return jsonify({
+                "error": "Missing existing_report_id for matched report completion"
+            }), 400
+
+        if existing_report_id:
+            print(f"[REPORT FLOW] existing_report_flow detected for report_id={existing_report_id} -> skipping SIFT reprocessing")
+            completion_data = {
+                'student_name': student_name,
+                'student_number': student_number,
+                'contact_info': contact_info,
+                'description': description,
+            }
+            claim, error = create_pending_claim_for_existing_report(
+                int(existing_report_id),
+                completion_data,
+                matched_image_source,
+            )
+            if error:
+                return jsonify({"error": error}), 400
+            return jsonify({
+                "message": "Match found. Pending claim created.",
+                "new_pending_claim": claim.to_json(),
+            }), 201
         
         # Handle image file upload
         image_file = request.files.get('image')
@@ -113,8 +143,9 @@ def report_item():
 
         # Process based on status
         if status in ('lost', 'found') and image_url:
+            print(f"[REPORT FLOW] new report with status={status} and image present -> running SIFT matching")
             # Process image to find matches
-            new_claim, message, process_result = process_report_with_image_url(
+            new_claim, message, process_result, match_result = process_report_with_image_url(
                 image_url, data, new_report
             )
             
@@ -127,8 +158,10 @@ def report_item():
             elif process_result == "Incomplete Data":
                 return jsonify({
                     "missing_fields": "Missing",
+                    "existing_report_id": new_report.report_id,
                     "message": message,
-                    "report": new_report.to_json()
+                    "report": new_report.to_json(),
+                    "match_result": match_result,
                 }), 201
             else:
                 return jsonify({

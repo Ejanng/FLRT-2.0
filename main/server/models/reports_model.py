@@ -10,7 +10,7 @@ class Reports(db.Model):
     __tablename__ = 'reports'
     __table_args__ = (
         db.CheckConstraint(
-            "status IN ('lost', 'found', 'published_lost', 'published_found', 'returned')",
+            "status IN ('lost', 'found', 'published_lost', 'published_found', 'returned', 'returned_lost', 'returned_found')",
             name='ck_reports_status_valid',
         ),
         db.Index('ix_reports_status', 'status'),

@@ -171,11 +171,17 @@ def review_claim(claim_id):
         if action == 'approve':
             claim.status = 'accepted'
             
-            # Update report status to returned
+            # Update report status to returned with original type
             report = Reports.query.get(claim.report_id)
             original_status = (report.status or '').strip().lower() if report else ''
             if report:
-                report.status = 'returned'
+                # Determine return status based on original type
+                if original_status in ('found', 'published_found'):
+                    report.status = 'returned_found'
+                elif original_status in ('lost', 'published_lost'):
+                    report.status = 'returned_lost'
+                else:
+                    report.status = 'returned'  # Fallback
 
             found_item = FoundItems.query.filter_by(report_id=claim.report_id).first()
             if found_item:
