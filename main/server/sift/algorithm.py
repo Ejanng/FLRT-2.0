@@ -18,7 +18,9 @@ import requests
 import re
 import time
 import io
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
+from typing import Optional, List, Dict, Any
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -42,16 +44,36 @@ TOKEN_FILE = os.path.join(RES_DIR, "token.pickle")
 DB_FILE = os.path.join(RES_DIR, "sift_database.pkl")
 IMAGE_DIR = os.path.join(RES_DIR, "train")
 
-# Debug output (remove after testing)
-print(f"📁 SIFT module directory: {MODULE_DIR}")
-print(f"📁 Resources directory: {RES_DIR}")
-print(f"📁 Credentials file: {GDRIVE_CREDENTIALS}")
-print(f"   Credentials exist: {os.path.exists(GDRIVE_CREDENTIALS)}")
-print(f"📁 Token file: {TOKEN_FILE}")
-print(f"   Token exists: {os.path.exists(TOKEN_FILE)}")
+SIFT_DEBUG = os.getenv('SIFT_DEBUG', '0').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _log(message: str, force: bool = False):
+    if force or SIFT_DEBUG:
+        print(message)
+
+_log(f"SIFT module directory: {MODULE_DIR}")
+_log(f"Resources directory: {RES_DIR}")
+_log(f"Credentials file: {GDRIVE_CREDENTIALS}")
+_log(f"   Credentials exist: {os.path.exists(GDRIVE_CREDENTIALS)}")
+_log(f"Token file: {TOKEN_FILE}")
+_log(f"   Token exists: {os.path.exists(TOKEN_FILE)}")
 
 # Use FULL ACCESS scope for everything (so token is consistent)
 SCOPES = ['https://www.googleapis.com/auth/drive']
+_DRIVE_SERVICE = None
+_MATCH_WORKERS = max(1, int(os.getenv('SIFT_MATCH_WORKERS', '1')))
+_DB_ENTRY_CACHE_KEY = None
+_DB_ENTRY_CACHE_VALUE = None
+
+
+def recommend_match_workers(db_size: int) -> int:
+    if db_size < 20:
+        return 1
+    if db_size < 80:
+        return 2
+    if db_size < 200:
+        return 4
+    return 6
 
 # Initiate SIFT detector
 try:
@@ -69,6 +91,10 @@ def get_drive_service():
     """
     Authenticate using OAuth (user account) - reuses saved token if available
     """
+    global _DRIVE_SERVICE
+    if _DRIVE_SERVICE is not None:
+        return _DRIVE_SERVICE
+
     creds = None
     
     # Load existing token
@@ -76,43 +102,44 @@ def get_drive_service():
         try:
             with open(TOKEN_FILE, 'rb') as token:
                 creds = pickle.load(token)
-            print(f"🔑 Loaded saved credentials")
+            _log("Key: Loaded saved credentials", force=True)
         except Exception as e:
-            print(f"⚠️ Could not load token: {e}")
+            _log(f"Error: Could not load token: {e}", force=True)
             creds = None
     
     # If no valid credentials, get new ones
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            print("🔄 Refreshing expired token...")
+            _log("Refreshing expired token...", force=True)
             creds.refresh(Request())
-            print("✅ Token refreshed!")
+            _log("Ok: Token refreshed!", force=True)
         else:
             if not os.path.exists(GDRIVE_CREDENTIALS):
                 raise FileNotFoundError(
-                    f"❌ Credentials not found at: {GDRIVE_CREDENTIALS}\n"
+                    f"Credentials not found at: {GDRIVE_CREDENTIALS}\n"
                     f"   Current directory: {os.getcwd()}\n"
                     f"   Expected: {GDRIVE_CREDENTIALS}\n"
                     "   Please ensure client_secret.json is in sift/res/ folder"
                 )
             
-            print("🔐 Opening browser for Google authentication...")
-            print("   (This will only happen once)")
+            _log("Opening browser for Google authentication...", force=True)
+            _log("   (This will only happen once)", force=True)
             flow = InstalledAppFlow.from_client_secrets_file(
                 GDRIVE_CREDENTIALS,
                 scopes=SCOPES
             )
             creds = flow.run_local_server(port=0)
-            print("✅ Authentication successful!")
+            _log("Ok: Authentication successful!", force=True)
         
         # Save token for future runs
         with open(TOKEN_FILE, 'wb') as token:
             pickle.dump(creds, token)
-            print(f"💾 Credentials saved")
+            _log("Credentials saved", force=True)
     else:
-        print("✅ Using existing valid credentials")
+        _log("Ok: Using existing valid credentials")
     
-    return build('drive', 'v3', credentials=creds)
+    _DRIVE_SERVICE = build('drive', 'v3', credentials=creds)
+    return _DRIVE_SERVICE
 
 
 def extract_gdrive_file_id(url):
@@ -122,19 +149,19 @@ def extract_gdrive_file_id(url):
     if not url or not isinstance(url, str):
         return None
     
-    # Pattern 1: https://drive.google.com/file/d/FILE_ID/view
+    # Pattern 1: https://drive.google.com/file/d/FILE_ID/view 
     pattern1 = r'/file/d/([a-zA-Z0-9_-]+)'
     match = re.search(pattern1, url)
     if match:
         return match.group(1)
     
-    # Pattern 2: https://drive.google.com/open?id=FILE_ID
+    # Pattern 2: https://drive.google.com/open?id=FILE_ID 
     pattern2 = r'[?&]id=([a-zA-Z0-9_-]+)'
     match = re.search(pattern2, url)
     if match:
         return match.group(1)
     
-    # Pattern 3: https://drive.google.com/uc?id=FILE_ID
+    # Pattern 3: https://drive.google.com/uc?id=FILE_ID 
     pattern3 = r'uc\?.*?id=([a-zA-Z0-9_-]+)'
     match = re.search(pattern3, url)
     if match:
@@ -162,13 +189,20 @@ def list_images_in_folder(service, folder_id):
              f"(mimeType contains 'image/jpeg' or mimeType contains 'image/png') "
              f"and trashed=false")
     
-    results = service.files().list(
-        q=query,
-        fields="files(id, name, mimeType, size)",
-        pageSize=1000
-    ).execute()
-    
-    return results.get('files', [])
+    files = []
+    page_token = None
+    while True:
+        results = service.files().list(
+            q=query,
+            fields="nextPageToken, files(id, name, mimeType, size)",
+            pageSize=1000,
+            pageToken=page_token,
+        ).execute()
+        files.extend(results.get('files', []))
+        page_token = results.get('nextPageToken')
+        if not page_token:
+            break
+    return files
 
 
 def download_image_from_drive(service, file_id):
@@ -292,6 +326,17 @@ def load_database():
             with open(DB_FILE, 'rb') as f:
                 db = pickle.load(f)
                 print(f"Success: Loaded database: {len(db)} objects")
+                recommended = recommend_match_workers(len(db))
+                if _MATCH_WORKERS != recommended:
+                    print(
+                        f"Info: Recommended SIFT_MATCH_WORKERS={recommended} for DB size={len(db)} "
+                        f"(current={_MATCH_WORKERS})"
+                    )
+                else:
+                    _log(
+                        f"Info: SIFT_MATCH_WORKERS={_MATCH_WORKERS} is optimal for DB size={len(db)}",
+                        force=True,
+                    )
                 return db
         except (EOFError, pickle.UnpicklingError) as e:
             print(f"Error: Corrupted database {DB_FILE}: {e}")
@@ -300,10 +345,14 @@ def load_database():
     return []
 
 
-def extract_and_save_features(img_source, img_name, database, is_frame=False, is_array=False):
+def extract_and_save_features_enhanced(img_source, img_name, database, 
+                                        source_url=None, gdrive_file_id=None,
+                                        is_frame=False, is_array=False):
     """
-    Extract SIFT features and save to database
+    Extract SIFT features and save to database with source metadata
     img_source: can be file path, frame, or numpy array
+    source_url: original URL or path of the image
+    gdrive_file_id: Google Drive file ID if applicable
     """
     try:
         if is_frame or is_array:
@@ -313,6 +362,9 @@ def extract_and_save_features(img_source, img_name, database, is_frame=False, is
                 gray = img_source
         elif isinstance(img_source, str):
             gray = cv2.imread(img_source, cv2.IMREAD_GRAYSCALE)
+            # If no source_url provided for local file, use the path
+            if source_url is None:
+                source_url = img_source
         else:
             return False
         
@@ -323,9 +375,31 @@ def extract_and_save_features(img_source, img_name, database, is_frame=False, is
         kp, desc = sift.detectAndCompute(gray, None)
         
         if desc is not None and len(desc) > 0:
-            # Success: ONLY SAVE DESCRIPTORS (numpy array) - KeyPoints are NOT saved
-            database.append((img_name, desc))
+            # Store as dictionary with metadata
+            entry = {
+                'name': img_name,
+                'descriptors': desc,
+                'source_url': source_url,           # Original URL/path
+                'gdrive_file_id': gdrive_file_id,  # GDrive ID if applicable
+                'source_type': 'unknown'
+            }
+            
+            # Determine source type
+            if gdrive_file_id:
+                entry['source_type'] = 'gdrive'
+                # Generate view link if we have the file ID
+                entry['gdrive_view_link'] = f"https://drive.google.com/file/d/{gdrive_file_id}/view"
+            elif source_url and source_url.startswith(('http://', 'https://')):
+                entry['source_type'] = 'url'
+            else:
+                entry['source_type'] = 'local'
+            
+            database.append(entry)
             print(f"Success: SAVED '{img_name}' to database ({len(desc)} descriptors)")
+            if source_url and len(source_url) > 60:
+                print(f"   Source: {source_url[:60]}...")
+            else:
+                print(f"   Source: {source_url}")
             return True
         else:
             print(f"Error: No features found in {img_name}")
@@ -357,7 +431,15 @@ def build_database_from_files(train_dir=IMAGE_DIR):
     
     for img_file in image_files:
         img_path = os.path.join(train_dir, img_file)
-        extract_and_save_features(img_path, img_file, database)
+        # For local files, store the full path as source_url
+        extract_and_save_features_enhanced(
+            img_path, 
+            img_file, 
+            database,
+            source_url=img_path,  # Store local path
+            is_frame=False,
+            is_array=False
+        )
     
     # Save database
     if database:
@@ -370,13 +452,13 @@ def build_database_from_files(train_dir=IMAGE_DIR):
 
 def build_database_from_gdrive(folder_url):
     """
-    Build database directly from Google Drive folder (no local download)
+    Build database directly from Google Drive folder (stores GDrive IDs)
     """
     database = []
     
     try:
         print("Secured: Authenticating with Google Drive...")
-        service = get_drive_service()  # Uses saved token!
+        service = get_drive_service()
         
         folder_id = extract_folder_id(folder_url)
         print(f"Folder ID: {folder_id}")
@@ -385,7 +467,7 @@ def build_database_from_gdrive(folder_url):
         images = list_images_in_folder(service, folder_id)
         
         if not images:
-            print("Error: No images found in folder. Check if folder is shared with your account.")
+            print("Error: No images found in folder.")
             return database
         
         print(f"Photo: Found {len(images)} images in Google Drive folder")
@@ -397,7 +479,17 @@ def build_database_from_gdrive(folder_url):
             img = download_image_from_drive(service, img_file['id'])
             
             if img is not None:
-                extract_and_save_features(img, img_file['name'], database, is_array=True)
+                # Pass the GDrive file ID and construct view link
+                gdrive_link = f"https://drive.google.com/file/d/{img_file['id']}/view"
+                
+                extract_and_save_features_enhanced(
+                    img, 
+                    img_file['name'], 
+                    database,
+                    source_url=gdrive_link,      # Store the GDrive link as source
+                    gdrive_file_id=img_file['id'],  # Store the file ID
+                    is_array=True
+                )
         
         # Save database locally
         if database:
@@ -407,10 +499,6 @@ def build_database_from_gdrive(folder_url):
         
     except Exception as e:
         print(f"Wrong Syntax: Google Drive error: {e}")
-        print("Make sure you've:")
-        print("   1. Enabled Google Drive API in Cloud Console")
-        print("   2. Downloaded OAuth client JSON to ./res/client_secret.json")
-        print("   3. Authenticated at least once (token will be saved)")
     
     return database
 
@@ -426,7 +514,20 @@ def build_database_from_url(image_url):
         
         if img is not None:
             img_name = os.path.basename(image_url.split('?')[0]) or "url_image.jpg"
-            if extract_and_save_features(img, img_name, database, is_array=True):
+            
+            # Determine if it's a GDrive URL and extract ID
+            gdrive_id = None
+            if 'drive.google.com' in image_url:
+                gdrive_id = extract_gdrive_file_id(image_url)
+            
+            if extract_and_save_features_enhanced(
+                img, 
+                img_name, 
+                database,
+                source_url=image_url,
+                gdrive_file_id=gdrive_id,
+                is_array=True
+            ):
                 # Save single image database
                 with open(DB_FILE, 'wb') as f:
                     pickle.dump(database, f)
@@ -496,7 +597,7 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True):
 def detect_from_database(test_img_source, database, output_gdrive_folder_id=None):
     """
     Detect/match test image against trained database
-    Supports: local path, URL, Google Drive sharing link
+    Returns enhanced result with both query and matched image info
     """
     result = {
         'success': False,
@@ -505,11 +606,29 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         'all_matches': [],
         'saved_to_gdrive': False,
         'gdrive_file_id': None,
+        'gdrive_view_link': None,
+        # Query image info
+        'query_image': {
+            'original_source': test_img_source,
+            'source_type': None,
+            'saved_to_gdrive': False,
+            'gdrive_file_id': None,
+            'gdrive_view_link': None
+        },
+        # Matched image info
+        'matched_image': {
+            'name': None,
+            'source_url': None,
+            'source_type': None,
+            'gdrive_file_id': None,
+            'gdrive_view_link': None
+        },
         'error': None
     }
     
     try:
         test_gray, source_type = load_image_from_source(test_img_source)
+        result['query_image']['source_type'] = source_type
     except Exception as e:
         error_msg = f"Could not load test image: {e}"
         print(f"Wrong Syntax: {error_msg}")
@@ -524,46 +643,63 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         result['error'] = error_msg
         return result
     
-    best_match = None
     best_good = 0
-    best_img_name = None
-    all_matches = []
+    best_entry = None  # Store the full database entry, not just name
+    all_matches: List[Dict[str, Any]] = []
     
     print(f"\nMatching against {len(database)} database images...")
     
-    for img_name, desc_train in database:
-        matches = flann.knnMatch(desc_test, desc_train, k=2)
-        
-        goodMatch = []
-        for m, n in matches:
-            if m.distance < 0.75 * n.distance:
-                goodMatch.append(m)
-        
-        all_matches.append((img_name, len(goodMatch)))
-        
-        if len(goodMatch) > best_good:
-            best_good = len(goodMatch)
-            best_img_name = img_name
-            best_match = goodMatch
+    normalized_entries = _normalize_database_entries(database)
+
+    if _MATCH_WORKERS > 1 and len(normalized_entries) >= 20:
+        with ThreadPoolExecutor(max_workers=_MATCH_WORKERS) as executor:
+            score_results = list(executor.map(lambda e: _score_entry(desc_test, e), normalized_entries))
+    else:
+        score_results = [_score_entry(desc_test, entry) for entry in normalized_entries]
+
+    for entry_dict, score in score_results:
+        all_matches.append({
+            'name': entry_dict['name'],
+            'score': score,
+            'source_url': entry_dict.get('source_url'),
+            'gdrive_file_id': entry_dict.get('gdrive_file_id'),
+            'gdrive_view_link': entry_dict.get('gdrive_view_link'),
+            'source_type': entry_dict.get('source_type', 'unknown')
+        })
+        if score > best_good:
+            best_good = score
+            best_entry = entry_dict
     
-    all_matches.sort(key=lambda x: x[1], reverse=True)
+    # Sort all matches by score
+    all_matches.sort(key=lambda x: x['score'], reverse=True)
     result['all_matches'] = all_matches
     
     print(f"\n Top matches:")
-    for name, count in all_matches[:5]:
-        status = "Success:" if count > MIN_MATCH_COUNT else "Wrong Syntax:"
-        print(f"   {status} {name}: {count} matches")
+    for match in all_matches[:5]:
+        status = "Success:" if match['score'] > MIN_MATCH_COUNT else "Wrong Syntax:"
+        source_info = f" ({match['source_type']})" if match['source_type'] else ""
+        print(f"   {status} {match['name']}: {match['score']} matches{source_info}")
     
-    if best_img_name and best_good > MIN_MATCH_COUNT:
+    if best_entry and best_good > MIN_MATCH_COUNT:
         result['success'] = True
-        result['best_match'] = best_img_name
+        result['best_match'] = best_entry['name']
         result['match_score'] = best_good
         
-        print(f"\nRESULT: Best match is '{best_img_name}' with {best_good} matches")
+        # Populate matched image info
+        result['matched_image'] = {
+            'name': best_entry['name'],
+            'source_url': best_entry.get('source_url'),
+            'source_type': best_entry.get('source_type', 'unknown'),
+            'gdrive_file_id': best_entry.get('gdrive_file_id'),
+            'gdrive_view_link': best_entry.get('gdrive_view_link')
+        }
+        
+        print(f"\nRESULT: Best match is '{best_entry['name']}' with {best_good} matches")
+        print(f"   Matched image source: {best_entry.get('source_url', 'N/A')}")
         
         # Create annotated image
         test_color = cv2.cvtColor(test_gray, cv2.COLOR_GRAY2BGR)
-        text = f'Match: {best_img_name}'
+        text = f'Match: {best_entry["name"]}'
         (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_COMPLEX, 1, 2)
         
         cv2.rectangle(test_color, (10, 10), (10 + text_width, 40), (0, 0, 0), -1)
@@ -579,7 +715,7 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
                 
                 upload_result = save_image_to_gdrive(
                     test_color, 
-                    f"match_{best_img_name}.jpg", 
+                    f"match_{best_entry['name']}.jpg", 
                     output_gdrive_folder_id
                 )
                 
@@ -587,6 +723,12 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
                     result['saved_to_gdrive'] = True
                     result['gdrive_file_id'] = upload_result['id']
                     result['gdrive_view_link'] = upload_result['view_link']
+                    
+                    # Also update query_image section
+                    result['query_image']['saved_to_gdrive'] = True
+                    result['query_image']['gdrive_file_id'] = upload_result['id']
+                    result['query_image']['gdrive_view_link'] = upload_result['view_link']
+                    
                     print(f"Success: Saved to Google Drive: {upload_result['name']}")
                 else:
                     raise Exception(upload_result.get('error', 'Unknown upload error'))
@@ -600,6 +742,61 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         result['error'] = f"No match found (best score: {best_good}, threshold: {MIN_MATCH_COUNT})"
     
     return result
+
+
+def _normalize_database_entries(database: List[Any]) -> List[Dict[str, Any]]:
+    global _DB_ENTRY_CACHE_KEY, _DB_ENTRY_CACHE_VALUE
+
+    cache_key = (id(database), len(database))
+    if _DB_ENTRY_CACHE_KEY == cache_key and _DB_ENTRY_CACHE_VALUE is not None:
+        return _DB_ENTRY_CACHE_VALUE
+
+    normalized: List[Dict[str, Any]] = []
+    for entry in database:
+        if isinstance(entry, tuple):
+            img_name, desc_train = entry
+            normalized.append({
+                'name': img_name,
+                'descriptors': desc_train,
+                'source_url': None,
+                'gdrive_file_id': None,
+                'gdrive_view_link': None,
+                'source_type': 'legacy',
+            })
+        else:
+            normalized.append({
+                'name': entry.get('name', 'unknown'),
+                'descriptors': entry.get('descriptors'),
+                'source_url': entry.get('source_url'),
+                'gdrive_file_id': entry.get('gdrive_file_id'),
+                'gdrive_view_link': entry.get('gdrive_view_link'),
+                'source_type': entry.get('source_type', 'unknown'),
+            })
+
+    _DB_ENTRY_CACHE_KEY = cache_key
+    _DB_ENTRY_CACHE_VALUE = normalized
+    return normalized
+
+
+def _score_entry(desc_test: np.ndarray, entry_dict: Dict[str, Any]):
+    desc_train = entry_dict.get('descriptors')
+    if desc_train is None or len(desc_train) < 2:
+        return entry_dict, 0
+
+    try:
+        local_flann = cv2.FlannBasedMatcher(flannParam, {})
+        matches = local_flann.knnMatch(desc_test, desc_train, k=2)
+    except cv2.error:
+        return entry_dict, 0
+
+    score = 0
+    for pair in matches:
+        if len(pair) < 2:
+            continue
+        m, n = pair
+        if m.distance < 0.75 * n.distance:
+            score += 1
+    return entry_dict, score
 
 
 def build_database_live_capture():
@@ -636,7 +833,7 @@ def main():
     elif args.mode == 'train_gdrive':
         print("=== GOOGLE DRIVE TRAINING MODE ===")
         if not args.source:
-            print("Wrong Syntax: Provide GDrive folder URL: --source 'https://drive.google.com/drive/folders/...'")
+            print("Wrong Syntax: Provide GDrive folder URL: --source 'https://drive.google.com/drive/folders/ ...'")
             return
         build_database_from_gdrive(args.source)
         

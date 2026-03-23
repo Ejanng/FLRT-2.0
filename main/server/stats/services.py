@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from models.pending_claims_model import PendingClaims
 from models.reports_model import Reports
 
@@ -20,3 +21,5 @@ def get_admin_dashboard_statistics() -> dict[str, int]:
         'pending_claims': get_pending_claim_count(),
         'resolved_claims': get_resolved_claim_count(),
     }
+=======
+>>>>>>> beta-v2.0

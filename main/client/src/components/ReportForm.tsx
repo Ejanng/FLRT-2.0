@@ -1,60 +1,143 @@
-import React, { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import "../styles.css";
+// client/src/components/ReportForm.tsx
+import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Upload, X, Loader2, Camera, MapPin, Calendar, FileText, Sparkles } from 'lucide-react'
+import PersonalInfoModal from './PersonalInfoModal'
+import MatchResultCard from './MatchResultCard'
+import { reportsApi } from '../services/api'
 
-const ReportForm: React.FC = () => {
-  const navigate = useNavigate();
-  const initialFormData = {
-    itemName: "",
-    description: "",
-    status: "",
-    location: "",
-    date: "",
-    photo: null as File | null,
-  };
-  const [formData, setFormData] = useState({
-    ...initialFormData,
-  });
+interface ReportFormData {
+  itemName: string
+  description: string
+  status: 'lost' | 'found' | ''
+  location: string
+  date: string
+  time?: string
+  photo: File | null
+  studentName?: string
+  studentNumber?: string
+  contactInfo?: string
+  existingReportId?: number
+  matchedImageSource?: string
+}
 
-  const [photoPreview, setPhotoPreview] = useState<string>("");
-  const [submitMessage, setSubmitMessage] = useState<string>("");
-  const [submitStatus, setSubmitStatus] = useState<"success" | "error" | "">("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+const MAX_CHARS = 1000
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+interface ReportFormProps {
+  initialData?: Partial<ReportFormData>
+}
+
+export default function ReportForm({ initialData }: ReportFormProps) {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+
+  const normalizedInitialData: ReportFormData = {
+    itemName: initialData?.itemName || '',
+    description: initialData?.description || '',
+    status: initialData?.status || '',
+    location: initialData?.location || '',
+    date: initialData?.date || '',
+    time: initialData?.time || '',
+    photo: null,
+    studentName: initialData?.studentName,
+    studentNumber: initialData?.studentNumber,
+    contactInfo: initialData?.contactInfo,
+    existingReportId: initialData?.existingReportId,
+    matchedImageSource: initialData?.matchedImageSource,
+  }
+  
+  const [formData, setFormData] = useState<ReportFormData>({
+    ...normalizedInitialData,
+  })
+  
+  const [pendingData, setPendingData] = useState<ReportFormData | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string>('')
+  const [submitMessage, setSubmitMessage] = useState<string>('')
+  const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | ''>('')
+  const [showModal, setShowModal] = useState(false)
+  const [matchResult, setMatchResult] = useState<any>(null)
+  const [pendingExistingReportId, setPendingExistingReportId] = useState<number | null>(null)
+
+  const submitMutation = useMutation({
+    mutationFn: (data: FormData) => reportsApi.submit(data),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['all-reports'] })
+      queryClient.invalidateQueries({ queryKey: ['recent-reports'] })
+      
+      if (data.missing_fields === 'Missing') {
+        const existingReportId = Number(data?.existing_report_id || 0) || null
+        const matchedImageSource =
+          data?.match_result?.matched_image?.source_url ||
+          data?.match_result?.matched_image?.gdrive_view_link ||
+
+          ''
+
+        setPendingExistingReportId(existingReportId)
+
+        setPendingData({
+          ...formData,
+          existingReportId: existingReportId || undefined,
+          matchedImageSource,
+        })
+        setMatchResult(data.match_result || null)
+        setShowModal(true)
+        setSubmitStatus('')
+        setSubmitMessage('')
+      } else {
+        setSubmitStatus('success')
+        setSubmitMessage(data.message || 'Report submitted successfully!')
+        
+        if (data.new_pending_claim) {
+          setMatchResult({
+            name: data.new_pending_claim.image?.split('/').pop() || 'Matched Item',
+            gdrive_view_link: data.new_pending_claim.image,
+          })
+        }
+
+        setFormData({
+          itemName: '',
+          description: '',
+          status: '',
+          location: '',
+          date: '',
+          time: '',
+          photo: null,
+        })
+        setPhotoPreview('')
+      }
+    },
+    onError: (error: any) => {
+      setSubmitStatus('error')
+      setSubmitMessage(error.message || 'Failed to submit report')
+    },
+  })
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const file = e.target.files?.[0]
     if (file) {
-      setFormData((prev) => ({ ...prev, photo: file }));
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      setFormData((prev) => ({ ...prev, photo: file }))
+      const reader = new FileReader()
+      reader.onloadend = () => setPhotoPreview(reader.result as string)
+      reader.readAsDataURL(file)
     }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
+  }
 
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith("image/")) {
-      setFormData((prev) => ({ ...prev, photo: file }));
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    e.preventDefault()
+    const file = e.dataTransfer.files?.[0]
+    if (file?.type.startsWith('image/')) {
+      setFormData((prev) => ({ ...prev, photo: file }))
+      const reader = new FileReader()
+      reader.onloadend = () => setPhotoPreview(reader.result as string)
+      reader.readAsDataURL(file)
     }
+<<<<<<< HEAD
   };
 
  const handleSubmit = async (e: React.FormEvent) => {
@@ -79,89 +162,152 @@ const ReportForm: React.FC = () => {
       method: "POST",
       body: dataToSend,
     });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Form submitted successfully:", data);
-      setSubmitStatus("success");
-      setSubmitMessage("Report submitted successfully!");
-      setFormData(initialFormData);
-      setPhotoPreview("");
-    } else {
-      const errorBody = await response.json().catch(() => null);
-      const errorMessage = errorBody?.error || "Failed to submit report.";
-      console.error("Failed to submit report:", errorMessage);
-      setSubmitStatus("error");
-      setSubmitMessage(`${errorMessage} Please try again.`);
-    }
-  } catch (error) {
-    console.error("Error submitting report:", error);
-    setSubmitStatus("error");
-    setSubmitMessage("An error occurred. Please try again.");
-  } finally {
-    setIsSubmitting(false);
+=======
   }
-};
-  const characterCount = formData.description.length;
-  const maxCharacters = 1000;
-  const minCharacters = 10;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSubmitMessage('')
+    setSubmitStatus('')
+>>>>>>> beta-v2.0
+
+    if (formData.status === 'found' && (!formData.studentName || !formData.studentNumber || !formData.contactInfo)) {
+      setPendingData(formData)
+      setShowModal(true)
+      return
+    }
+
+    const formDataToSend = new FormData()
+    formDataToSend.append('item_name', formData.itemName)
+    formDataToSend.append('description', formData.description)
+    formDataToSend.append('status', formData.status)
+    formDataToSend.append('location', formData.location)
+    formDataToSend.append('date', formData.date)
+    formDataToSend.append('time', formData.time || '')
+    
+    if (formData.photo) {
+      formDataToSend.append('image', formData.photo)
+    }
+
+    submitMutation.mutate(formDataToSend)
+  }
+
+  const handlePersonalInfoSubmit = async (info: { studentName: string; studentNumber: string; contactInfo: string }) => {
+    if (!pendingData) return
+    
+    setShowModal(false)
+
+    setFormData((prev) => ({
+      ...prev,
+      studentName: info.studentName,
+      studentNumber: info.studentNumber,
+      contactInfo: info.contactInfo,
+    }))
+    
+    const existingReportId = pendingData.existingReportId || pendingExistingReportId
+    const formDataToSend = new FormData()
+    if (existingReportId) {
+      formDataToSend.append('existing_report_flow', '1')
+      formDataToSend.append('existing_report_id', String(existingReportId))
+      if (pendingData.matchedImageSource) {
+        formDataToSend.append('matched_image_source', pendingData.matchedImageSource)
+      }
+      formDataToSend.append('description', pendingData.description)
+    } else {
+      if (matchResult && pendingData.status === 'lost') {
+        setSubmitStatus('error')
+        setSubmitMessage('Unable to continue matched report flow. Please submit again.')
+        return
+      }
+      formDataToSend.append('item_name', pendingData.itemName)
+      formDataToSend.append('description', pendingData.description)
+      formDataToSend.append('status', pendingData.status)
+      formDataToSend.append('location', pendingData.location)
+      formDataToSend.append('date', pendingData.date)
+      formDataToSend.append('time', pendingData.time || '')
+      if (pendingData.photo) {
+        formDataToSend.append('image', pendingData.photo)
+      }
+    }
+    formDataToSend.append('student_name', info.studentName)
+    formDataToSend.append('student_number', info.studentNumber)
+    formDataToSend.append('contact_info', info.contactInfo)
+
+    submitMutation.mutate(formDataToSend)
+    setPendingData(null)
+    setPendingExistingReportId(null)
+  }
+
+  const charCount = formData.description.length
+  const progress = Math.min((charCount / MAX_CHARS) * 100, 100)
 
   return (
-    <div className="reports-page">
-      <div className="report-container">
-        <form className="report-form" onSubmit={handleSubmit}>
-          {submitMessage && (
-            <div className={`form-message ${submitStatus === "success" ? "success" : "error"}`}>
-              {submitMessage}
-            </div>
-          )}
-          {/* Item Name */}
-          <div className="form-group">
-            <label htmlFor="itemName">
-              Item Name <span className="required">*</span>
-            </label>
-            <input
-              type="text"
-              id="itemName"
-              name="itemName"
-              value={formData.itemName}
-              onChange={handleInputChange}
-              placeholder="e.g., Black Backpack, iPhone 13, Keys"
-              required
-            />
-          </div>
+    <div className="glass-card rounded-3xl p-6 sm:p-8 lg:p-10">
+      {submitMessage && (
+        <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
+          submitStatus === 'success' 
+            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200' 
+            : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200'
+        }`}>
+          {submitStatus === 'success' ? <Sparkles size={20} /> : <X size={20} />}
+          {submitMessage}
+        </div>
+      )}
 
-          {/* Description */}
-          <div className="form-group">
-            <label htmlFor="description">
-              Description <span className="required">*</span>
-            </label>
-            <textarea
-              id="description"
-              name="description"
-              value={formData.description}
-              onChange={handleInputChange}
-              placeholder="Provide detailed description (color, size, distinguishing features)"
-              rows={5}
-              maxLength={maxCharacters}
-              required
-            />
-            <div className="character-count">
-              {characterCount}/{maxCharacters} characters (minimum {minCharacters})
-            </div>
-          </div>
+      {matchResult && <MatchResultCard match={matchResult} />}
 
-          {/* Status */}
-          <div className="form-group">
-            <label htmlFor="status">
-              Status <span className="required">*</span>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+            <FileText size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+            Item Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            name="itemName"
+            value={formData.itemName}
+            onChange={handleInputChange}
+            placeholder="e.g., Black Backpack, iPhone 13"
+            required
+            className="input-field"
+          />
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+            <FileText size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+            Description <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            name="description"
+            value={formData.description}
+            onChange={handleInputChange}
+            placeholder="Provide detailed description..."
+            rows={4}
+            maxLength={MAX_CHARS}
+            required
+            className="input-field resize-none"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-[#0217f7] to-[#f5e102] transition-all" style={{ width: `${progress}%` }} />
+            </div>
+            <span className="text-xs text-gray-500">{charCount}/{MAX_CHARS}</span>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              <Sparkles size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              Status <span className="text-red-500">*</span>
             </label>
             <select
-              id="status"
               name="status"
               value={formData.status}
               onChange={handleInputChange}
               required
+              className="input-field appearance-none bg-white dark:bg-[#1e1e2e]"
             >
               <option value="">Select status</option>
               <option value="lost">Lost</option>
@@ -169,110 +315,132 @@ const ReportForm: React.FC = () => {
             </select>
           </div>
 
-          {/* Location */}
-          <div className="form-group">
-            <label htmlFor="location">
-              Location <span className="required">*</span>
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              <MapPin size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              Location <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
-              id="location"
               name="location"
               value={formData.location}
               onChange={handleInputChange}
-              placeholder="e.g., Library 2nd Floor, CS Building Room 101"
+              placeholder="e.g., Library 2nd Floor"
               required
+              className="input-field"
             />
           </div>
+        </div>
 
-          {/* Date */}
-          <div className="form-group">
-            <label htmlFor="date">
-              Date <span className="required">*</span>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              <Calendar size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              Date <span className="text-red-500">*</span>
             </label>
             <input
               type="date"
-              id="date"
               name="date"
               value={formData.date}
               onChange={handleInputChange}
               required
+              className="input-field"
             />
-            <div className="field-helper">When was the item lost or found?</div>
           </div>
 
-          {/* Photo Upload */}
-          <div className="form-group">
-            <label htmlFor="photo">Item Photo (Optional)</label>
-            <div
-              className="photo-upload-area"
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-            >
-              {photoPreview ? (
-                <div className="photo-preview">
-                  <img src={photoPreview} alt="Item preview" />
-                  <button
-                    type="button"
-                    className="remove-photo"
-                    onClick={() => {
-                      setFormData((prev) => ({ ...prev, photo: null }));
-                      setPhotoPreview("");
-                    }}
-                  >
-                    ✕ Remove
-                  </button>
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+              <Calendar size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              Time <span className="text-gray-400 text-xs">(Optional)</span>
+            </label>
+            <input
+              type="time"
+              name="time"
+              value={formData.time}
+              onChange={handleInputChange}
+              className="input-field"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
+            <Camera size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+            Photo <span className="text-gray-400 text-xs">(Optional)</span>
+          </label>
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleDrop}
+            className="relative border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-[#0217f7] dark:hover:border-[#f5e102] transition-all cursor-pointer group"
+          >
+            {photoPreview ? (
+              <div className="relative inline-block">
+                <img src={photoPreview} alt="Preview" className="max-h-48 rounded-xl shadow-lg" />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setFormData((prev) => ({ ...prev, photo: null }))
+                    setPhotoPreview('')
+                  }}
+                  className="absolute -top-3 -right-3 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#0217f7] to-[#010bb3] flex items-center justify-center">
+                  <Upload size={28} className="text-[#f5e102]" />
                 </div>
-              ) : (
-                <>
-                  <div className="upload-icon">
-                    <svg
-                      width="48"
-                      height="48"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="17 8 12 3 7 8" />
-                      <line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                  </div>
-                  <p className="upload-text">
-                    <span className="upload-link">Click to upload</span> or drag and drop
-                  </p>
-                  <p className="upload-formats">JPEG, PNG, GIF, or WebP (Max 5MB)</p>
-                </>
-              )}
-              <input
-                type="file"
-                id="photo"
-                name="photo"
-                accept="image/jpeg,image/png,image/gif,image/webp"
-                onChange={handlePhotoUpload}
-                className="photo-input"
-              />
-            </div>
+                <p className="text-gray-700 dark:text-gray-300">
+                  <span className="text-[#0217f7] dark:text-[#f5e102] font-semibold">Click to upload</span> or drag and drop
+                </p>
+                <p className="text-xs text-gray-400">JPEG, PNG (Max 5MB)</p>
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoUpload}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
           </div>
+        </div>
 
-          {/* Form Actions */}
-          <div className="form-actions">
-            <button type="submit" className="btn primary" disabled={isSubmitting}>
-              {isSubmitting ? "Submitting..." : "Submit Report"}
-            </button>
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={() => navigate({ to: "/" })}
-            >
-              Cancel Report
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="flex flex-col sm:flex-row gap-3 pt-4">
+          <button 
+            type="submit" 
+            disabled={submitMutation.isPending} 
+            className="flex-1 btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-50"
+          >
+            {submitMutation.isPending ? (
+              <><Loader2 size={20} className="animate-spin" /> Processing...</>
+            ) : (
+              <><Sparkles size={20} className="text-[#f5e102]" /> Submit Report</>
+            )}
+          </button>
+          <button 
+            type="button" 
+            onClick={() => navigate({ to: '/' })} 
+            className="flex-1 btn-secondary py-3"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+
+      <PersonalInfoModal
+        isOpen={showModal}
+        onClose={() => {
+          setShowModal(false)
+          setPendingData(null)
+          setPendingExistingReportId(null)
+        }}
+        onSubmit={handlePersonalInfoSubmit}
+        isLoading={submitMutation.isPending}
+        matchFound={!!matchResult}
+      />
     </div>
-  );
-};
-
-export default ReportForm;
+  )
+}

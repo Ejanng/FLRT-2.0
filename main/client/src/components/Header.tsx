@@ -1,67 +1,112 @@
 import { Link } from '@tanstack/react-router'
-
 import { useState } from 'react'
-import { Home, Menu, X } from 'lucide-react'
+import { Menu, X, Home, FileText, Search, Shield, Info } from 'lucide-react'
+import { hasValidAdminSession } from '../utils/adminAuth'
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false)
 
+  // Simple path detection without useRouter
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/'
+  
+  const isActive = (path: string) => {
+    if (path === '/') return currentPath === '/'
+    return currentPath.startsWith(path)
+  }
+
+  const isAuthenticatedAdmin = hasValidAdminSession()
+
+  const navItems = [
+    { to: '/', label: 'Home', icon: Home },
+    { to: '/report', label: 'Report', icon: FileText },
+    { to: '/claim', label: 'Find', icon: Search },
+    { to: '/about', label: 'About', icon: Info },
+    { to: isAuthenticatedAdmin ? '/admin/dashboard' : '/admin', label: 'Admin', icon: Shield },
+  ]
+
   return (
     <>
-      <header className="p-4 flex items-center bg-gray-800 text-white shadow-lg">
-        <button
-          onClick={() => setIsOpen(true)}
-          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-          aria-label="Open menu"
-        >
-          <Menu size={24} />
-        </button>
-        <h1 className="ml-4 text-xl font-semibold">
-          <Link to="/">
-            <img
-              src="/tanstack-word-logo-white.svg"
-              alt="TanStack Logo"
-              className="h-10"
-            />
+      <header className="sticky top-0 z-50 glass-card border-b border-[#0217f7]/10 dark:border-[#f5e102]/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#0217f7] to-[#010bb3] rounded-xl flex items-center justify-center">
+              <span className="text-white font-bold text-lg">F</span>
+              <div className="absolute w-3 h-3 bg-[#f5e102] rounded-full animate-pulse ml-6 -mt-6" />
+            </div>
+            <span className="text-2xl font-bold hidden sm:block">
+              <span className="text-[#0217f7] dark:text-white">FL</span>
+              <span className="text-[#f5e102]">R</span>
+              <span className="text-[#0217f7] dark:text-white">T</span>
+            </span>
           </Link>
-        </h1>
+
+          <nav className="hidden md:flex items-center gap-2">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const active = isActive(item.to)
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
+                    active
+                      ? 'bg-gradient-to-r from-[#0217f7] to-[#010bb3] text-white'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-[#0217f7]/10'
+                  }`}
+                >
+                  <Icon size={18} className={active ? 'text-[#f5e102]' : ''} />
+                  {item.label}
+                </Link>
+              )
+            })}
+            
+          </nav>
+
+          <div className="flex items-center gap-2 md:hidden">
+            <button
+              onClick={() => setIsOpen(true)}
+              className="p-2 rounded-lg bg-gradient-to-r from-[#0217f7] to-[#010bb3] text-white"
+            >
+              <Menu size={24} />
+            </button>
+          </div>
+        </div>
       </header>
 
-      <aside
-        className={`fixed top-0 left-0 h-full w-80 bg-gray-900 text-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          <h2 className="text-xl font-bold">Navigation</h2>
-          <button
-            onClick={() => setIsOpen(false)}
-            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-            aria-label="Close menu"
-          >
-            <X size={24} />
-          </button>
+      {isOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setIsOpen(false)} />
+          <aside className="absolute top-0 right-0 h-full w-80 bg-white dark:bg-[#12121a] shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b dark:border-gray-800">
+              <span className="text-xl font-bold text-[#0217f7] dark:text-[#f5e102]">Menu</span>
+              <button onClick={() => setIsOpen(false)}>
+                <X size={24} className="text-gray-600 dark:text-gray-300" />
+              </button>
+            </div>
+            <nav className="p-4 space-y-2">
+              {navItems.map((item) => {
+                const Icon = item.icon
+                const active = isActive(item.to)
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setIsOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl ${
+                      active
+                        ? 'bg-gradient-to-r from-[#0217f7] to-[#010bb3] text-white'
+                        : 'text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    <Icon size={20} />
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </nav>
+          </aside>
         </div>
-
-        <nav className="flex-1 p-4 overflow-y-auto">
-          <Link
-            to="/"
-            onClick={() => setIsOpen(false)}
-            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors mb-2"
-            activeProps={{
-              className:
-                'flex items-center gap-3 p-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors mb-2',
-            }}
-          >
-            <Home size={20} />
-            <span className="font-medium">Home</span>
-          </Link>
-
-          {/* Demo Links Start */}
-
-          {/* Demo Links End */}
-        </nav>
-      </aside>
+      )}
     </>
   )
 }

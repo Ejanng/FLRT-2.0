@@ -10,26 +10,26 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ReportRouteImport } from './routes/report'
-import { Route as ClaimRouteRouteImport } from './routes/claim/route'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ClaimIndexRouteImport } from './routes/claim/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
-import { Route as ReportFormRoutesRouteImport } from './routes/report-form/routes'
-import { Route as HomeRoutesRouteImport } from './routes/home/routes'
-import { Route as HeaderRoutesRouteImport } from './routes/header/routes'
-import { Route as FooterRoutesRouteImport } from './routes/footer/routes'
+import { Route as ClaimFoundFormRouteImport } from './routes/claim/foundForm'
 import { Route as ClaimClaimFormRouteImport } from './routes/claim/claimForm'
 import { Route as AdminDashboardIndexRouteImport } from './routes/admin/dashboard/index'
 import { Route as AdminDashboardVerifyRouteImport } from './routes/admin/dashboard/verify'
+import { Route as AdminDashboardReturnedRouteImport } from './routes/admin/dashboard/returned'
 import { Route as AdminDashboardReportsRouteImport } from './routes/admin/dashboard/reports'
+import { Route as AdminDashboardFoundItemsRouteImport } from './routes/admin/dashboard/found-items'
 
 const ReportRoute = ReportRouteImport.update({
   id: '/report',
   path: '/report',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ClaimRouteRoute = ClaimRouteRouteImport.update({
-  id: '/claim',
-  path: '/claim',
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -37,35 +37,25 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ClaimIndexRoute = ClaimIndexRouteImport.update({
+  id: '/claim/',
+  path: '/claim/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/admin/',
   path: '/admin/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ReportFormRoutesRoute = ReportFormRoutesRouteImport.update({
-  id: '/report-form/routes',
-  path: '/report-form/routes',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HomeRoutesRoute = HomeRoutesRouteImport.update({
-  id: '/home/routes',
-  path: '/home/routes',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HeaderRoutesRoute = HeaderRoutesRouteImport.update({
-  id: '/header/routes',
-  path: '/header/routes',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FooterRoutesRoute = FooterRoutesRouteImport.update({
-  id: '/footer/routes',
-  path: '/footer/routes',
+const ClaimFoundFormRoute = ClaimFoundFormRouteImport.update({
+  id: '/claim/foundForm',
+  path: '/claim/foundForm',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ClaimClaimFormRoute = ClaimClaimFormRouteImport.update({
-  id: '/claimForm',
-  path: '/claimForm',
-  getParentRoute: () => ClaimRouteRoute,
+  id: '/claim/claimForm',
+  path: '/claim/claimForm',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AdminDashboardIndexRoute = AdminDashboardIndexRouteImport.update({
   id: '/admin/dashboard/',
@@ -77,52 +67,63 @@ const AdminDashboardVerifyRoute = AdminDashboardVerifyRouteImport.update({
   path: '/admin/dashboard/verify',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminDashboardReturnedRoute = AdminDashboardReturnedRouteImport.update({
+  id: '/admin/dashboard/returned',
+  path: '/admin/dashboard/returned',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminDashboardReportsRoute = AdminDashboardReportsRouteImport.update({
   id: '/admin/dashboard/reports',
   path: '/admin/dashboard/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminDashboardFoundItemsRoute =
+  AdminDashboardFoundItemsRouteImport.update({
+    id: '/admin/dashboard/found-items',
+    path: '/admin/dashboard/found-items',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/claim': typeof ClaimRouteRouteWithChildren
+  '/about': typeof AboutRoute
   '/report': typeof ReportRoute
   '/claim/claimForm': typeof ClaimClaimFormRoute
-  '/footer/routes': typeof FooterRoutesRoute
-  '/header/routes': typeof HeaderRoutesRoute
-  '/home/routes': typeof HomeRoutesRoute
-  '/report-form/routes': typeof ReportFormRoutesRoute
+  '/claim/foundForm': typeof ClaimFoundFormRoute
   '/admin/': typeof AdminIndexRoute
+  '/claim/': typeof ClaimIndexRoute
+  '/admin/dashboard/found-items': typeof AdminDashboardFoundItemsRoute
   '/admin/dashboard/reports': typeof AdminDashboardReportsRoute
+  '/admin/dashboard/returned': typeof AdminDashboardReturnedRoute
   '/admin/dashboard/verify': typeof AdminDashboardVerifyRoute
   '/admin/dashboard/': typeof AdminDashboardIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/claim': typeof ClaimRouteRouteWithChildren
+  '/about': typeof AboutRoute
   '/report': typeof ReportRoute
   '/claim/claimForm': typeof ClaimClaimFormRoute
-  '/footer/routes': typeof FooterRoutesRoute
-  '/header/routes': typeof HeaderRoutesRoute
-  '/home/routes': typeof HomeRoutesRoute
-  '/report-form/routes': typeof ReportFormRoutesRoute
+  '/claim/foundForm': typeof ClaimFoundFormRoute
   '/admin': typeof AdminIndexRoute
+  '/claim': typeof ClaimIndexRoute
+  '/admin/dashboard/found-items': typeof AdminDashboardFoundItemsRoute
   '/admin/dashboard/reports': typeof AdminDashboardReportsRoute
+  '/admin/dashboard/returned': typeof AdminDashboardReturnedRoute
   '/admin/dashboard/verify': typeof AdminDashboardVerifyRoute
   '/admin/dashboard': typeof AdminDashboardIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/claim': typeof ClaimRouteRouteWithChildren
+  '/about': typeof AboutRoute
   '/report': typeof ReportRoute
   '/claim/claimForm': typeof ClaimClaimFormRoute
-  '/footer/routes': typeof FooterRoutesRoute
-  '/header/routes': typeof HeaderRoutesRoute
-  '/home/routes': typeof HomeRoutesRoute
-  '/report-form/routes': typeof ReportFormRoutesRoute
+  '/claim/foundForm': typeof ClaimFoundFormRoute
   '/admin/': typeof AdminIndexRoute
+  '/claim/': typeof ClaimIndexRoute
+  '/admin/dashboard/found-items': typeof AdminDashboardFoundItemsRoute
   '/admin/dashboard/reports': typeof AdminDashboardReportsRoute
+  '/admin/dashboard/returned': typeof AdminDashboardReturnedRoute
   '/admin/dashboard/verify': typeof AdminDashboardVerifyRoute
   '/admin/dashboard/': typeof AdminDashboardIndexRoute
 }
@@ -130,57 +131,58 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/claim'
+    | '/about'
     | '/report'
     | '/claim/claimForm'
-    | '/footer/routes'
-    | '/header/routes'
-    | '/home/routes'
-    | '/report-form/routes'
+    | '/claim/foundForm'
     | '/admin/'
+    | '/claim/'
+    | '/admin/dashboard/found-items'
     | '/admin/dashboard/reports'
+    | '/admin/dashboard/returned'
     | '/admin/dashboard/verify'
     | '/admin/dashboard/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/claim'
+    | '/about'
     | '/report'
     | '/claim/claimForm'
-    | '/footer/routes'
-    | '/header/routes'
-    | '/home/routes'
-    | '/report-form/routes'
+    | '/claim/foundForm'
     | '/admin'
+    | '/claim'
+    | '/admin/dashboard/found-items'
     | '/admin/dashboard/reports'
+    | '/admin/dashboard/returned'
     | '/admin/dashboard/verify'
     | '/admin/dashboard'
   id:
     | '__root__'
     | '/'
-    | '/claim'
+    | '/about'
     | '/report'
     | '/claim/claimForm'
-    | '/footer/routes'
-    | '/header/routes'
-    | '/home/routes'
-    | '/report-form/routes'
+    | '/claim/foundForm'
     | '/admin/'
+    | '/claim/'
+    | '/admin/dashboard/found-items'
     | '/admin/dashboard/reports'
+    | '/admin/dashboard/returned'
     | '/admin/dashboard/verify'
     | '/admin/dashboard/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ClaimRouteRoute: typeof ClaimRouteRouteWithChildren
+  AboutRoute: typeof AboutRoute
   ReportRoute: typeof ReportRoute
-  FooterRoutesRoute: typeof FooterRoutesRoute
-  HeaderRoutesRoute: typeof HeaderRoutesRoute
-  HomeRoutesRoute: typeof HomeRoutesRoute
-  ReportFormRoutesRoute: typeof ReportFormRoutesRoute
+  ClaimClaimFormRoute: typeof ClaimClaimFormRoute
+  ClaimFoundFormRoute: typeof ClaimFoundFormRoute
   AdminIndexRoute: typeof AdminIndexRoute
+  ClaimIndexRoute: typeof ClaimIndexRoute
+  AdminDashboardFoundItemsRoute: typeof AdminDashboardFoundItemsRoute
   AdminDashboardReportsRoute: typeof AdminDashboardReportsRoute
+  AdminDashboardReturnedRoute: typeof AdminDashboardReturnedRoute
   AdminDashboardVerifyRoute: typeof AdminDashboardVerifyRoute
   AdminDashboardIndexRoute: typeof AdminDashboardIndexRoute
 }
@@ -194,11 +196,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/claim': {
-      id: '/claim'
-      path: '/claim'
-      fullPath: '/claim'
-      preLoaderRoute: typeof ClaimRouteRouteImport
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -208,6 +210,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/claim/': {
+      id: '/claim/'
+      path: '/claim'
+      fullPath: '/claim/'
+      preLoaderRoute: typeof ClaimIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/': {
       id: '/admin/'
       path: '/admin'
@@ -215,40 +224,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/report-form/routes': {
-      id: '/report-form/routes'
-      path: '/report-form/routes'
-      fullPath: '/report-form/routes'
-      preLoaderRoute: typeof ReportFormRoutesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/home/routes': {
-      id: '/home/routes'
-      path: '/home/routes'
-      fullPath: '/home/routes'
-      preLoaderRoute: typeof HomeRoutesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/header/routes': {
-      id: '/header/routes'
-      path: '/header/routes'
-      fullPath: '/header/routes'
-      preLoaderRoute: typeof HeaderRoutesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/footer/routes': {
-      id: '/footer/routes'
-      path: '/footer/routes'
-      fullPath: '/footer/routes'
-      preLoaderRoute: typeof FooterRoutesRouteImport
+    '/claim/foundForm': {
+      id: '/claim/foundForm'
+      path: '/claim/foundForm'
+      fullPath: '/claim/foundForm'
+      preLoaderRoute: typeof ClaimFoundFormRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/claim/claimForm': {
       id: '/claim/claimForm'
-      path: '/claimForm'
+      path: '/claim/claimForm'
       fullPath: '/claim/claimForm'
       preLoaderRoute: typeof ClaimClaimFormRouteImport
-      parentRoute: typeof ClaimRouteRoute
+      parentRoute: typeof rootRouteImport
     }
     '/admin/dashboard/': {
       id: '/admin/dashboard/'
@@ -264,6 +252,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminDashboardVerifyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/dashboard/returned': {
+      id: '/admin/dashboard/returned'
+      path: '/admin/dashboard/returned'
+      fullPath: '/admin/dashboard/returned'
+      preLoaderRoute: typeof AdminDashboardReturnedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/dashboard/reports': {
       id: '/admin/dashboard/reports'
       path: '/admin/dashboard/reports'
@@ -271,31 +266,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminDashboardReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/dashboard/found-items': {
+      id: '/admin/dashboard/found-items'
+      path: '/admin/dashboard/found-items'
+      fullPath: '/admin/dashboard/found-items'
+      preLoaderRoute: typeof AdminDashboardFoundItemsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
-interface ClaimRouteRouteChildren {
-  ClaimClaimFormRoute: typeof ClaimClaimFormRoute
-}
-
-const ClaimRouteRouteChildren: ClaimRouteRouteChildren = {
-  ClaimClaimFormRoute: ClaimClaimFormRoute,
-}
-
-const ClaimRouteRouteWithChildren = ClaimRouteRoute._addFileChildren(
-  ClaimRouteRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ClaimRouteRoute: ClaimRouteRouteWithChildren,
+  AboutRoute: AboutRoute,
   ReportRoute: ReportRoute,
-  FooterRoutesRoute: FooterRoutesRoute,
-  HeaderRoutesRoute: HeaderRoutesRoute,
-  HomeRoutesRoute: HomeRoutesRoute,
-  ReportFormRoutesRoute: ReportFormRoutesRoute,
+  ClaimClaimFormRoute: ClaimClaimFormRoute,
+  ClaimFoundFormRoute: ClaimFoundFormRoute,
   AdminIndexRoute: AdminIndexRoute,
+  ClaimIndexRoute: ClaimIndexRoute,
+  AdminDashboardFoundItemsRoute: AdminDashboardFoundItemsRoute,
   AdminDashboardReportsRoute: AdminDashboardReportsRoute,
+  AdminDashboardReturnedRoute: AdminDashboardReturnedRoute,
   AdminDashboardVerifyRoute: AdminDashboardVerifyRoute,
   AdminDashboardIndexRoute: AdminDashboardIndexRoute,
 }
