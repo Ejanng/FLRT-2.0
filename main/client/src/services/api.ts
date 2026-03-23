@@ -61,6 +61,10 @@ export const reportsApi = {
   getAll: () => fetchWithAuth('/reports/all-reports'),
   getClaimable: () => fetch(`${API_BASE_URL}/reports/claimable-reports`).then(r => r.json()),
   getById: (id: string) => fetchWithAuth(`/reports/report/${id}`),
+  updateStatus: (reportId: number, status: string) => fetchWithAuth(`/reports/update-report/${reportId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  }),
   publish: (reportId: number, category: string) => fetchWithAuth('/reports/publish-report', {
     method: 'POST',
     body: JSON.stringify({ report_id: reportId, category }),
@@ -68,15 +72,15 @@ export const reportsApi = {
   delete: (reportId: string) => fetchWithAuth(`/reports/delete-report/${reportId}`, {
     method: 'DELETE',
   }),
-  contactFinderForFoundReport: (reportId: number, adminNotes: string) =>
+  contactFinderForFoundReport: (reportId: number, adminNotes: string, adminId?: number) =>
     fetchWithAuth(`/found-items/report/${reportId}/contact`, {
       method: 'POST',
-      body: JSON.stringify({ admin_notes: adminNotes }),
+      body: JSON.stringify({ admin_notes: adminNotes, admin_id: adminId }),
     }),
-  verifyFoundReportCoordination: (reportId: number, adminNotes?: string) =>
+  verifyFoundReportCoordination: (reportId: number, adminNotes?: string, adminId?: number) =>
     fetchWithAuth(`/found-items/report/${reportId}/verify`, {
       method: 'POST',
-      body: JSON.stringify({ admin_notes: adminNotes }),
+      body: JSON.stringify({ admin_notes: adminNotes, admin_id: adminId }),
     }),
   submit: (formData: FormData) => fetch(`${API_BASE_URL}/reports/report-item`, {
     method: 'POST',

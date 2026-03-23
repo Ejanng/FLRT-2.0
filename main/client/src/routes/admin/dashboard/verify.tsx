@@ -48,6 +48,7 @@ function VerifyClaimsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [search, setSearch] = useState('')
 
   const { data: claimsData, isLoading } = useQuery({
     queryKey: ['pending-claims'],
@@ -56,10 +57,20 @@ function VerifyClaimsPage() {
   })
 
   const claims = claimsData?.claims || []
-  const totalPages = Math.max(1, Math.ceil(claims.length / ITEMS_PER_PAGE))
+  const filteredClaims = claims.filter((claim: Claim) => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    return (
+      String(claim.claim_id).toLowerCase().includes(q) ||
+      (claim.student_name || '').toLowerCase().includes(q) ||
+      (claim.student_number || '').toLowerCase().includes(q) ||
+      (claim.contact_info || '').toLowerCase().includes(q)
+    )
+  })
+  const totalPages = Math.max(1, Math.ceil(filteredClaims.length / ITEMS_PER_PAGE))
   const currentPageSafe = Math.min(currentPage, totalPages)
   const startIndex = (currentPageSafe - 1) * ITEMS_PER_PAGE
-  const paginatedClaims = claims.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  const paginatedClaims = filteredClaims.slice(startIndex, startIndex + ITEMS_PER_PAGE)
 
   const reviewMutation = useMutation({
     mutationFn: ({ claimId, action }: { claimId: number; action: 'approve' | 'reject' }) =>
@@ -166,18 +177,27 @@ function VerifyClaimsPage() {
           </div>
 
           <div className="p-6 border-b border-gray-200 dark:border-gray-800">
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Pending Claims</h1>
-                <p className="text-gray-500 dark:text-gray-400 mt-1">
-                  Review and verify ownership claims from students
-                </p>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Pending Claims</h1>
+                  <p className="text-gray-500 dark:text-gray-400 mt-1">
+                    Review and verify ownership claims from students
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <span className="bg-[#f5e102] text-[#0217f7] px-3 py-1 rounded-full text-sm font-bold">
+                    {filteredClaims.length} Pending
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className="bg-[#f5e102] text-[#0217f7] px-3 py-1 rounded-full text-sm font-bold">
-                  {claims.length} Pending
-                </span>
-              </div>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setCurrentPage(1) }}
+                placeholder="Search by ID, name, student ID, or contact..."
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0217f7]"
+              />
             </div>
           </div>
 
@@ -185,11 +205,11 @@ function VerifyClaimsPage() {
             <div className="flex justify-center py-12">
               <Loader2 size={48} className="animate-spin text-[#0217f7] dark:text-[#f5e102]" />
             </div>
-          ) : claims.length === 0 ? (
+          ) : filteredClaims.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
               <CheckCircle size={48} className="mx-auto mb-4 text-green-500" />
-              <p className="text-lg font-medium">No pending claims</p>
-              <p className="text-sm">All claims have been processed!</p>
+              <p className="text-lg font-medium">No {search ? 'matching' : 'pending'} claims</p>
+              <p className="text-sm">{search ? 'Try different search terms' : 'All claims have been processed!'}</p>
             </div>
           ) : (
             <div className="grid gap-4 p-6">

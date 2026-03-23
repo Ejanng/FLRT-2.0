@@ -18,6 +18,8 @@ interface ReportFormData {
   studentName?: string
   studentNumber?: string
   contactInfo?: string
+  existingReportId?: number
+  matchedImageSource?: string
 }
 
 const MAX_CHARS = 1000
@@ -41,6 +43,8 @@ export default function ReportForm({ initialData }: ReportFormProps) {
     studentName: initialData?.studentName,
     studentNumber: initialData?.studentNumber,
     contactInfo: initialData?.contactInfo,
+    existingReportId: initialData?.existingReportId,
+    matchedImageSource: initialData?.matchedImageSource,
   }
   
   const [formData, setFormData] = useState<ReportFormData>({
@@ -53,6 +57,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | ''>('')
   const [showModal, setShowModal] = useState(false)
   const [matchResult, setMatchResult] = useState<any>(null)
+  const [pendingExistingReportId, setPendingExistingReportId] = useState<number | null>(null)
 
   const submitMutation = useMutation({
     mutationFn: (data: FormData) => reportsApi.submit(data),
@@ -61,7 +66,20 @@ export default function ReportForm({ initialData }: ReportFormProps) {
       queryClient.invalidateQueries({ queryKey: ['recent-reports'] })
       
       if (data.missing_fields === 'Missing') {
-        setPendingData(formData)
+        const existingReportId = Number(data?.existing_report_id || 0) || null
+        const matchedImageSource =
+          data?.match_result?.matched_image?.source_url ||
+          data?.match_result?.matched_image?.gdrive_view_link ||
+
+          ''
+
+        setPendingExistingReportId(existingReportId)
+
+        setPendingData({
+          ...formData,
+          existingReportId: existingReportId || undefined,
+          matchedImageSource,
+        })
         setMatchResult(data.match_result || null)
         setShowModal(true)
         setSubmitStatus('')
@@ -159,23 +177,38 @@ export default function ReportForm({ initialData }: ReportFormProps) {
       contactInfo: info.contactInfo,
     }))
     
+    const existingReportId = pendingData.existingReportId || pendingExistingReportId
     const formDataToSend = new FormData()
-    formDataToSend.append('item_name', pendingData.itemName)
-    formDataToSend.append('description', pendingData.description)
-    formDataToSend.append('status', pendingData.status)
-    formDataToSend.append('location', pendingData.location)
-    formDataToSend.append('date', pendingData.date)
-    formDataToSend.append('time', pendingData.time || '')
+    if (existingReportId) {
+      formDataToSend.append('existing_report_flow', '1')
+      formDataToSend.append('existing_report_id', String(existingReportId))
+      if (pendingData.matchedImageSource) {
+        formDataToSend.append('matched_image_source', pendingData.matchedImageSource)
+      }
+      formDataToSend.append('description', pendingData.description)
+    } else {
+      if (matchResult && pendingData.status === 'lost') {
+        setSubmitStatus('error')
+        setSubmitMessage('Unable to continue matched report flow. Please submit again.')
+        return
+      }
+      formDataToSend.append('item_name', pendingData.itemName)
+      formDataToSend.append('description', pendingData.description)
+      formDataToSend.append('status', pendingData.status)
+      formDataToSend.append('location', pendingData.location)
+      formDataToSend.append('date', pendingData.date)
+      formDataToSend.append('time', pendingData.time || '')
+      if (pendingData.photo) {
+        formDataToSend.append('image', pendingData.photo)
+      }
+    }
     formDataToSend.append('student_name', info.studentName)
     formDataToSend.append('student_number', info.studentNumber)
     formDataToSend.append('contact_info', info.contactInfo)
-    
-    if (pendingData.photo) {
-      formDataToSend.append('image', pendingData.photo)
-    }
 
     submitMutation.mutate(formDataToSend)
     setPendingData(null)
+    setPendingExistingReportId(null)
   }
 
   const charCount = formData.description.length
@@ -375,6 +408,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
         onClose={() => {
           setShowModal(false)
           setPendingData(null)
+          setPendingExistingReportId(null)
         }}
         onSubmit={handlePersonalInfoSubmit}
         isLoading={submitMutation.isPending}

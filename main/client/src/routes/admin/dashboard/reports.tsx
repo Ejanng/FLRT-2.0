@@ -2,7 +2,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, X, CheckCircle, XCircle, Eye, Loader2, Check, Trash2, MessageSquare } from 'lucide-react'
+import { X, CheckCircle, XCircle, Eye, Loader2, Check, Trash2, MessageSquare } from 'lucide-react'
 import { reportsApi } from '../../../services/api'
 import { requireAdminAuth } from '../../../utils/adminAuth'
 
@@ -26,6 +26,7 @@ interface Report {
   public_match_link?: string | null
   has_pending_claim?: boolean
   pending_claim_status?: string | null
+  coordination_admin_id?: number | null
 }
 
 export const Route = createFileRoute('/admin/dashboard/reports')({
@@ -46,14 +47,30 @@ function ReportsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [search, setSearch] = useState('')
 
+  const getAdminIdFromToken = () => {
+    try {
+      const token = localStorage.getItem('admin_token')
+      if (!token) return 1
+      const payloadBase64 = token.split('.')[1]
+      if (!payloadBase64) return 1
+      const payload = JSON.parse(atob(payloadBase64))
+      const sub = Number(payload?.sub)
+      return Number.isFinite(sub) ? sub : 1
+    } catch {
+      return 1
+    }
+  }
+
   const { data: reportsData, isLoading } = useQuery({
     queryKey: ['all-reports'],
     queryFn: reportsApi.getAll,
   })
 
-  const reports = (reportsData?.reports || []).filter(
-    (report: Report) => !report.has_pending_claim && (report.status || '').toLowerCase() !== 'returned',
-  )
+  const reports = (reportsData?.reports || []).filter((report: Report) => {
+    const status = (report.status || '').toLowerCase()
+    const isReturned = status === 'returned' || status === 'returned_lost' || status === 'returned_found'
+    return !report.has_pending_claim && !isReturned
+  })
   const filteredReports = reports.filter((report: Report) => {
     const q = search.trim().toLowerCase()
     if (!q) return true
@@ -114,8 +131,8 @@ function ReportsPage() {
   })
 
   const contactFinderMutation = useMutation({
-    mutationFn: ({ reportId, notes }: { reportId: number; notes: string }) =>
-      reportsApi.contactFinderForFoundReport(reportId, notes),
+    mutationFn: ({ reportId, notes, adminId }: { reportId: number; notes: string; adminId: number }) =>
+      reportsApi.contactFinderForFoundReport(reportId, notes, adminId),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['all-reports'] })
       setSelectedReport(prev => prev ? { ...prev, coordination_status: 'contacted' } : null)
@@ -128,8 +145,8 @@ function ReportsPage() {
   })
 
   const verifyCoordinationMutation = useMutation({
-    mutationFn: ({ reportId, notes }: { reportId: number; notes?: string }) =>
-      reportsApi.verifyFoundReportCoordination(reportId, notes),
+    mutationFn: ({ reportId, notes, adminId }: { reportId: number; notes?: string; adminId: number }) =>
+      reportsApi.verifyFoundReportCoordination(reportId, notes, adminId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-reports'] })
       setSelectedReport(prev => prev ? { ...prev, coordination_status: 'verified' } : null)
@@ -137,6 +154,28 @@ function ReportsPage() {
     },
     onError: (error: any) => {
       setMessage(error.message || 'Failed to verify coordination')
+    },
+  })
+
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ reportId, status }: { reportId: number; status: string }) =>
+      reportsApi.updateStatus(reportId, status),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['all-reports'] })
+      queryClient.invalidateQueries({ queryKey: ['claimable-reports'] })
+      if (variables.status.startsWith('returned')) {
+        setMessage('Report marked as returned and moved to Returned Reports.')
+      } else {
+        setMessage('Report visibility updated successfully.')
+      }
+      setTimeout(() => {
+        setIsModalOpen(false)
+        setSelectedReport(null)
+        setMessage('')
+      }, 1200)
+    },
+    onError: (error: any) => {
+      setMessage(error.message || 'Failed to update report status')
     },
   })
 
@@ -160,6 +199,7 @@ function ReportsPage() {
     contactFinderMutation.mutate({
       reportId: Number(selectedReport.report_id),
       notes: coordinationNotes.trim(),
+      adminId: getAdminIdFromToken(),
     })
   }
 
@@ -168,12 +208,13 @@ function ReportsPage() {
     verifyCoordinationMutation.mutate({
       reportId: Number(selectedReport.report_id),
       notes: coordinationNotes.trim() || undefined,
+      adminId: getAdminIdFromToken(),
     })
   }
 
   const handlePublish = () => {
     if (!selectedReport) return
-    if ((selectedReport.status || '').toLowerCase() === 'returned') {
+    if (['returned', 'returned_lost', 'returned_found'].includes((selectedReport.status || '').toLowerCase())) {
       setMessage('Returned reports cannot be published again. Review them in Returned Reports page.')
       return
     }
@@ -184,6 +225,26 @@ function ReportsPage() {
     publishMutation.mutate({
       reportId: parseInt(selectedReport.report_id),
       category: selectedCategory.trim(),
+    })
+  }
+
+  const handleHideFromClaims = () => {
+    if (!selectedReport) return
+    const status = (selectedReport.status || '').toLowerCase()
+    const nextStatus = status === 'published_lost' ? 'lost' : 'found'
+    updateStatusMutation.mutate({
+      reportId: Number(selectedReport.report_id),
+      status: nextStatus,
+    })
+  }
+
+  const handleMarkReturned = () => {
+    if (!selectedReport) return
+    const status = (selectedReport.status || '').toLowerCase()
+    const nextStatus = status === 'published_lost' ? 'returned_lost' : 'returned_found'
+    updateStatusMutation.mutate({
+      reportId: Number(selectedReport.report_id),
+      status: nextStatus,
     })
   }
 
@@ -276,20 +337,23 @@ function ReportsPage() {
             </button>
           </div>
 
-          <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-            <div className="relative max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value)
-                  setCurrentPage(1)
-                }}
-                placeholder="Search by ID, name, location, or date..."
-                className="input-field pl-10"
-              />
+          <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Manage Reports</h1>
+                <p className="text-gray-500 dark:text-gray-400 mt-1">Review, approve, and publish pending reports</p>
+              </div>
             </div>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setCurrentPage(1)
+              }}
+              placeholder="Search by ID, name, location, or date..."
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0217f7] mt-4"
+            />
           </div>
 
           <div className="overflow-x-auto">
@@ -502,6 +566,12 @@ function ReportsPage() {
                         {!selectedReport.coordination_status || selectedReport.coordination_status === 'pending' && <span className="text-orange-600 dark:text-orange-400">Pending Contact</span>}
                       </p>
                     </div>
+                    {selectedReport.coordination_admin_id && (
+                      <div className="p-2 bg-white dark:bg-gray-800 rounded">
+                        <p className="text-xs text-gray-500 uppercase mb-1">Handled By Admin ID</p>
+                        <p className="font-semibold text-gray-900 dark:text-white">#{selectedReport.coordination_admin_id}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -545,7 +615,7 @@ function ReportsPage() {
                 <>
                   <button
                     onClick={handlePublish}
-                    disabled={publishMutation.isPending || contactFinderMutation.isPending || verifyCoordinationMutation.isPending || !selectedCategory.trim() || (selectedReport.is_found_report && selectedReport.coordination_status !== 'verified')}
+                    disabled={publishMutation.isPending || contactFinderMutation.isPending || verifyCoordinationMutation.isPending || updateStatusMutation.isPending || !selectedCategory.trim() || (selectedReport.is_found_report && selectedReport.coordination_status !== 'verified')}
                     title={selectedReport.is_found_report && selectedReport.coordination_status !== 'verified' ? 'Must verify with finder before publishing' : ''}
                     className="flex-1 btn-primary flex items-center justify-center gap-2 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -554,7 +624,7 @@ function ReportsPage() {
                   </button>
                   <button
                     onClick={handleReject}
-                    disabled={deleteMutation.isPending}
+                    disabled={deleteMutation.isPending || updateStatusMutation.isPending}
                     className="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
                   >
                     {deleteMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
@@ -562,9 +632,29 @@ function ReportsPage() {
                   </button>
                 </>
               ) : (
-                <div className="w-full p-3 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg text-center font-medium">
-                  <CheckCircle size={18} className="inline mr-2" />
-                  This report is published and visible in Claim page
+                <div className="w-full space-y-3">
+                  <div className="w-full p-3 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-lg text-center font-medium">
+                    <CheckCircle size={18} className="inline mr-2" />
+                    This report is published and visible in Claim page
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      onClick={handleHideFromClaims}
+                      disabled={updateStatusMutation.isPending}
+                      className="w-full bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                    >
+                      {updateStatusMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <X size={18} />}
+                      Hide from Claim Page
+                    </button>
+                    <button
+                      onClick={handleMarkReturned}
+                      disabled={updateStatusMutation.isPending}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                    >
+                      {updateStatusMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
+                      Mark as Returned
+                    </button>
+                  </div>
                 </div>
               )}
               <button

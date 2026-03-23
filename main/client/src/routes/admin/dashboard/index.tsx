@@ -2,7 +2,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { Box, Clock, CheckCircle, TrendingUp, Search, LogOut, Loader2, RefreshCw } from 'lucide-react'
+import { Box, Clock, CheckCircle, TrendingUp, LogOut, Loader2, RefreshCw } from 'lucide-react'
 import { statsApi, authApi, siftApi } from '../../../services/api'
 import { requireAdminAuth } from '../../../utils/adminAuth'
 
@@ -57,6 +57,7 @@ function DashboardPage() {
   const [retrainMessage, setRetrainMessage] = useState('')
   const [webhookTestResult, setWebhookTestResult] = useState<WebhookTestResponse | null>(null)
   const [webhookTestMessage, setWebhookTestMessage] = useState('')
+  const [search, setSearch] = useState('')
 
   // Fetch dashboard stats with auto-refresh every 30 seconds
   const { 
@@ -72,7 +73,7 @@ function DashboardPage() {
 
   // Fetch recent reports
   const { 
-    data: reportsData, 
+    data: reportsDataRaw, 
     isLoading: reportsLoading,
     refetch: refetchReports 
   } = useQuery({
@@ -84,6 +85,17 @@ function DashboardPage() {
       return data.reports?.slice(0, 5) || []
     },
     refetchInterval: 30000,
+  })
+
+  const reportsData = (reportsDataRaw || []).filter((report: Report) => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    return (
+      String(report.report_id).toLowerCase().includes(q) ||
+      (report.item_name || '').toLowerCase().includes(q) ||
+      (report.location || '').toLowerCase().includes(q) ||
+      new Date(report.date_reported).toLocaleDateString().toLowerCase().includes(q)
+    )
   })
 
   const stats: DashboardStats = statsData?.stats || {
@@ -373,11 +385,14 @@ function DashboardPage() {
           </div>
 
           {/* Search */}
-          <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-            <div className="relative max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input type="text" placeholder="Search reports..." className="input-field pl-10" />
-            </div>
+          <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by ID, name, location, or date..."
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0217f7]"
+            />
           </div>
 
           {/* Recent Reports Table */}

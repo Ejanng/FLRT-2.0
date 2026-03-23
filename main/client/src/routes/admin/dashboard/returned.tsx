@@ -31,20 +31,42 @@ function ReturnedReportsPage() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const [returnType, setReturnType] = useState<'all' | 'lost' | 'found'>('all')
 
   const { data: reportsData, isLoading } = useQuery({
     queryKey: ['all-reports'],
     queryFn: reportsApi.getAll,
   })
 
-  const returnedReports: Report[] = (reportsData?.reports || []).filter(
-    (report: Report) => (report.status || '').toLowerCase() === 'returned',
-  )
+  const returnedReports: Report[] = (reportsData?.reports || []).filter((report: Report) => {
+    const status = (report.status || '').toLowerCase()
+    return status === 'returned' || status === 'returned_lost' || status === 'returned_found'
+  })
 
-  const totalPages = Math.max(1, Math.ceil(returnedReports.length / ITEMS_PER_PAGE))
+  const typeFilteredReports = returnedReports.filter((report: Report) => {
+    if (returnType === 'all') return true
+    const status = (report.status || '').toLowerCase()
+    if (returnType === 'lost') return status === 'returned_lost' || (status === 'returned' && report.item_name) // Fallback for old 'returned' status
+    if (returnType === 'found') return status === 'returned_found' || (status === 'returned' && report.item_name)
+    return true
+  })
+
+  const filteredReports: Report[] = typeFilteredReports.filter((report: Report) => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    return (
+      String(report.report_id).toLowerCase().includes(q) ||
+      (report.item_name || '').toLowerCase().includes(q) ||
+      (report.location || '').toLowerCase().includes(q) ||
+      new Date(report.date_reported).toLocaleDateString().toLowerCase().includes(q)
+    )
+  })
+
+  const totalPages = Math.max(1, Math.ceil(filteredReports.length / ITEMS_PER_PAGE))
   const currentPageSafe = Math.min(currentPage, totalPages)
   const startIndex = (currentPageSafe - 1) * ITEMS_PER_PAGE
-  const paginatedReports = returnedReports.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  const paginatedReports = filteredReports.slice(startIndex, startIndex + ITEMS_PER_PAGE)
 
   const handleView = (report: Report) => {
     setSelectedReport(report)
@@ -107,8 +129,53 @@ function ReturnedReportsPage() {
           </div>
 
           <div className="p-6 border-b border-gray-200 dark:border-gray-800">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Returned Reports</h1>
-            <p className="text-gray-500 dark:text-gray-400 mt-1">Read-only history of reports already returned</p>
+            <div className="flex flex-col gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Returned Reports</h1>
+                <p className="text-gray-500 dark:text-gray-400 mt-1">Read-only history of reports already returned</p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => { setReturnType('all'); setCurrentPage(1) }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    returnType === 'all'
+                      ? 'bg-[#0217f7] text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  All Returns
+                </button>
+                <button
+                  onClick={() => { setReturnType('lost'); setCurrentPage(1) }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    returnType === 'lost'
+                      ? 'bg-red-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  Lost Returns
+                </button>
+                <button
+                  onClick={() => { setReturnType('found'); setCurrentPage(1) }}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    returnType === 'found'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  Found Returns
+                </button>
+              </div>
+
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setCurrentPage(1) }}
+                placeholder="Search by ID, name, location, or date..."
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0217f7]"
+              />
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -130,9 +197,9 @@ function ReturnedReportsPage() {
                       <Loader2 className="animate-spin mx-auto text-[#0217f7]" size={24} />
                     </td>
                   </tr>
-                ) : returnedReports.length === 0 ? (
+                ) : filteredReports.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">No returned reports found</td>
+                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">No {search ? 'matching' : 'returned'} reports found</td>
                   </tr>
                 ) : (
                   paginatedReports.map((report: Report) => (
@@ -161,10 +228,10 @@ function ReturnedReportsPage() {
             </table>
           </div>
 
-          {!isLoading && returnedReports.length > 0 && (
+          {!isLoading && filteredReports.length > 0 && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border-t border-gray-200 dark:border-gray-800">
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, returnedReports.length)} of {returnedReports.length} returned reports
+                Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, filteredReports.length)} of {filteredReports.length} {search ? 'matching' : 'returned'} reports
               </p>
               <div className="flex items-center gap-2 self-start sm:self-auto">
                 <button

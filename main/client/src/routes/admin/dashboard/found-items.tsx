@@ -43,6 +43,7 @@ function FoundItemsPage() {
   const [adminNotes, setAdminNotes] = useState('')
   const [isContacting, setIsContacting] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [search, setSearch] = useState('')
 
   const { data: itemsData, isLoading } = useQuery({
     queryKey: ['pending-found-items'],
@@ -51,10 +52,20 @@ function FoundItemsPage() {
   })
 
   const items: FoundItem[] = itemsData?.found_items || []
-  const totalPages = Math.max(1, Math.ceil(items.length / ITEMS_PER_PAGE))
+  const filteredItems = items.filter((item: FoundItem) => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    return (
+      String(item.found_item_id).toLowerCase().includes(q) ||
+      (item.finder_name || '').toLowerCase().includes(q) ||
+      (item.item_name || '').toLowerCase().includes(q) ||
+      (item.item_location || '').toLowerCase().includes(q)
+    )
+  })
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE))
   const currentPageSafe = Math.min(currentPage, totalPages)
   const startIndex = (currentPageSafe - 1) * ITEMS_PER_PAGE
-  const paginatedItems = items.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  const paginatedItems = filteredItems.slice(startIndex, startIndex + ITEMS_PER_PAGE)
 
   const contactMutation = useMutation({
     mutationFn: ({ foundItemId, notes }: { foundItemId: number; notes: string }) =>
@@ -188,18 +199,27 @@ function FoundItemsPage() {
 
           {/* Header Section */}
           <div className="p-6 border-b border-gray-200 dark:border-gray-800">
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Found Items</h1>
-                <p className="text-gray-500 dark:text-gray-400 mt-1">
-                  Manage items found by community members seeking to return them
-                </p>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Found Items</h1>
+                  <p className="text-gray-500 dark:text-gray-400 mt-1">
+                    Manage items found by community members seeking to return them
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <span className="bg-[#f5e102] text-[#0217f7] px-3 py-1 rounded-full text-sm font-bold whitespace-nowrap">
+                    {filteredItems.filter((i: FoundItem) => i.status === 'pending').length} Pending
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className="bg-[#f5e102] text-[#0217f7] px-3 py-1 rounded-full text-sm font-bold whitespace-nowrap">
-                  {items.filter((i: FoundItem) => i.status === 'pending').length} Pending
-                </span>
-              </div>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setCurrentPage(1) }}
+                placeholder="Search by ID, finder name, item name, or location..."
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0217f7]"
+              />
             </div>
           </div>
 
@@ -208,11 +228,11 @@ function FoundItemsPage() {
             <div className="flex justify-center py-12">
               <Loader2 size={48} className="animate-spin text-[#0217f7] dark:text-[#f5e102]" />
             </div>
-          ) : items.length === 0 ? (
+          ) : filteredItems.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
               <CheckCircle size={48} className="mx-auto mb-4 text-green-500" />
-              <p className="text-lg font-medium">No found items</p>
-              <p className="text-sm">All submitted found items have been processed!</p>
+              <p className="text-lg font-medium">No {search ? 'matching' : ''} found items</p>
+              <p className="text-sm">{search ? 'Try different search terms' : 'All submitted found items have been processed!'}</p>
             </div>
           ) : (
             <div className="grid gap-4 p-6">
