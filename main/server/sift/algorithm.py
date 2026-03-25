@@ -27,8 +27,11 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
-# Threshold 
-MIN_MATCH_COUNT = 30
+# Matching strictness thresholds (env configurable)
+MIN_MATCH_COUNT = max(1, int(os.getenv('SIFT_MIN_MATCH_COUNT', '40')))
+LOWE_RATIO_TEST = float(os.getenv('SIFT_LOWE_RATIO', '0.7'))
+MIN_MATCH_RATIO = float(os.getenv('SIFT_MIN_MATCH_RATIO', '0.12'))
+SECOND_BEST_MATCH_MULTIPLIER = float(os.getenv('SIFT_SECOND_BEST_MULTIPLIER', '1.25'))
 
 # Setup paths - works regardless of where script is called from
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -644,6 +647,8 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         return result
     
     best_good = 0
+    best_ratio = 0.0
+    second_best_good = 0
     best_entry = None  # Store the full database entry, not just name
     all_matches: List[Dict[str, Any]] = []
     
@@ -657,18 +662,25 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
     else:
         score_results = [_score_entry(desc_test, entry) for entry in normalized_entries]
 
-    for entry_dict, score in score_results:
+    for entry_dict, metrics in score_results:
+        score = metrics['good_matches']
+        ratio = metrics['match_ratio']
         all_matches.append({
             'name': entry_dict['name'],
             'score': score,
+            'match_ratio': ratio,
             'source_url': entry_dict.get('source_url'),
             'gdrive_file_id': entry_dict.get('gdrive_file_id'),
             'gdrive_view_link': entry_dict.get('gdrive_view_link'),
             'source_type': entry_dict.get('source_type', 'unknown')
         })
-        if score > best_good:
+        if score > best_good or (score == best_good and ratio > best_ratio):
+            second_best_good = best_good
             best_good = score
+            best_ratio = ratio
             best_entry = entry_dict
+        elif score > second_best_good:
+            second_best_good = score
     
     # Sort all matches by score
     all_matches.sort(key=lambda x: x['score'], reverse=True)
@@ -676,11 +688,23 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
     
     print(f"\n Top matches:")
     for match in all_matches[:5]:
-        status = "Success:" if match['score'] > MIN_MATCH_COUNT else "Wrong Syntax:"
+        status = "Success:" if (
+            match['score'] >= MIN_MATCH_COUNT and match['match_ratio'] >= MIN_MATCH_RATIO
+        ) else "Wrong Syntax:"
         source_info = f" ({match['source_type']})" if match['source_type'] else ""
-        print(f"   {status} {match['name']}: {match['score']} matches{source_info}")
+        print(
+            f"   {status} {match['name']}: {match['score']} matches "
+            f"(ratio={match['match_ratio']:.3f}){source_info}"
+        )
     
-    if best_entry and best_good > MIN_MATCH_COUNT:
+    passes_min_count = best_good >= MIN_MATCH_COUNT
+    passes_match_ratio = best_ratio >= MIN_MATCH_RATIO
+    passes_second_best_gap = (
+        second_best_good == 0
+        or best_good >= (second_best_good * SECOND_BEST_MATCH_MULTIPLIER)
+    )
+
+    if best_entry and passes_min_count and passes_match_ratio and passes_second_best_gap:
         result['success'] = True
         result['best_match'] = best_entry['name']
         result['match_score'] = best_good
@@ -694,7 +718,10 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
             'gdrive_view_link': best_entry.get('gdrive_view_link')
         }
         
-        print(f"\nRESULT: Best match is '{best_entry['name']}' with {best_good} matches")
+        print(
+            f"\nRESULT: Best match is '{best_entry['name']}' with {best_good} matches "
+            f"(ratio={best_ratio:.3f})"
+        )
         print(f"   Matched image source: {best_entry.get('source_url', 'N/A')}")
         
         # Create annotated image
@@ -707,6 +734,8 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
                    cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 0), 2)
         cv2.putText(test_color, f'Score: {best_good} matches', 
                    (10, 80), cv2.FONT_HERSHEY_COMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(test_color, f'Ratio: {best_ratio:.3f}',
+               (10, 115), cv2.FONT_HERSHEY_COMPLEX, 0.7, (0, 255, 0), 2)
         
         # Save to Google Drive if folder provided
         if output_gdrive_folder_id:
@@ -738,8 +767,19 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
                 result['error'] = f"Match found but GDrive save failed: {e}"
         
     else:
-        print(f"\nWrong Syntax: No sufficient matches found (best was {best_good}, need >{MIN_MATCH_COUNT})")
-        result['error'] = f"No match found (best score: {best_good}, threshold: {MIN_MATCH_COUNT})"
+        reasons = []
+        if not passes_min_count:
+            reasons.append(f"score {best_good} < min {MIN_MATCH_COUNT}")
+        if not passes_match_ratio:
+            reasons.append(f"ratio {best_ratio:.3f} < min {MIN_MATCH_RATIO:.3f}")
+        if not passes_second_best_gap:
+            reasons.append(
+                f"best {best_good} is too close to second {second_best_good} "
+                f"(need x{SECOND_BEST_MATCH_MULTIPLIER:.2f})"
+            )
+        detail = "; ".join(reasons) if reasons else "no qualifying match"
+        print(f"\nWrong Syntax: No sufficient matches found ({detail})")
+        result['error'] = f"No match found ({detail})"
     
     return result
 
@@ -781,22 +821,24 @@ def _normalize_database_entries(database: List[Any]) -> List[Dict[str, Any]]:
 def _score_entry(desc_test: np.ndarray, entry_dict: Dict[str, Any]):
     desc_train = entry_dict.get('descriptors')
     if desc_train is None or len(desc_train) < 2:
-        return entry_dict, 0
+        return entry_dict, {'good_matches': 0, 'match_ratio': 0.0}
 
     try:
         local_flann = cv2.FlannBasedMatcher(flannParam, {})
         matches = local_flann.knnMatch(desc_test, desc_train, k=2)
     except cv2.error:
-        return entry_dict, 0
+        return entry_dict, {'good_matches': 0, 'match_ratio': 0.0}
 
     score = 0
     for pair in matches:
         if len(pair) < 2:
             continue
         m, n = pair
-        if m.distance < 0.75 * n.distance:
+        if m.distance < LOWE_RATIO_TEST * n.distance:
             score += 1
-    return entry_dict, score
+    denominator = max(1, min(len(desc_test), len(desc_train)))
+    match_ratio = score / float(denominator)
+    return entry_dict, {'good_matches': score, 'match_ratio': match_ratio}
 
 
 def build_database_live_capture():
