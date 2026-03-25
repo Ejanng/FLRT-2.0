@@ -10,13 +10,13 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const theme: Theme = 'dark'
+  const theme: Theme = 'light'
 
   useEffect(() => {
     const root = window.document.documentElement
     root.classList.remove('light', 'dark')
-    root.classList.add('dark')
-    localStorage.setItem('flrt-theme', 'dark')
+    root.classList.add('light')
+    localStorage.setItem('flrt-theme', 'light')
   }, [])
 
   const toggleTheme = () => {}
