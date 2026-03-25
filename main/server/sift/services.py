@@ -2,6 +2,8 @@ import sift.algorithm as sift
 import os
 import pickle
 import re
+import threading
+from contextlib import contextmanager
 from typing import Optional, Iterable, Set
 from core.config import Config
 
@@ -14,6 +16,11 @@ os.makedirs(SIFT_DB_DIR, exist_ok=True)
 LOST_DB_FILE = os.path.join(SIFT_DB_DIR, 'lost_reports_sift_database.pkl')
 FOUND_DB_FILE = os.path.join(SIFT_DB_DIR, 'found_reports_sift_database.pkl')
 _AUTO_BUILD_EMPTY_ATTEMPTS: set[str] = set()
+
+_DB_FILE_SWITCH_LOCK = threading.RLock()
+_SIFT_MAX_CONCURRENT_JOBS = max(1, int(os.getenv('SIFT_MAX_CONCURRENT_JOBS', '2')))
+_SIFT_JOB_WAIT_TIMEOUT_SECONDS = max(1, int(os.getenv('SIFT_JOB_WAIT_TIMEOUT_SECONDS', '25')))
+_SIFT_JOB_SEMAPHORE = threading.BoundedSemaphore(_SIFT_MAX_CONCURRENT_JOBS)
 
 
 def _extract_folder_id(folder_url_or_id: Optional[str]) -> Optional[str]:
@@ -41,6 +48,31 @@ def _folder_url_for_target_status(target_status: str) -> str:
     return Config.FOUND_REPORTS_GDRIVE_FOLDER_URL
 
 
+@contextmanager
+def _sift_db_context(db_file: str):
+    original_db_file = sift.DB_FILE
+    with _DB_FILE_SWITCH_LOCK:
+        sift.DB_FILE = db_file
+        try:
+            yield
+        finally:
+            sift.DB_FILE = original_db_file
+
+
+@contextmanager
+def _acquire_sift_job_slot(job_name: str):
+    acquired = _SIFT_JOB_SEMAPHORE.acquire(timeout=_SIFT_JOB_WAIT_TIMEOUT_SECONDS)
+    if not acquired:
+        raise RuntimeError(
+            f"SIFT busy: too many concurrent jobs. Try again shortly. "
+            f"(max={_SIFT_MAX_CONCURRENT_JOBS}, wait_timeout={_SIFT_JOB_WAIT_TIMEOUT_SECONDS}s, job={job_name})"
+        )
+    try:
+        yield
+    finally:
+        _SIFT_JOB_SEMAPHORE.release()
+
+
 def _ensure_trained_database(target_status: str, auto_build: bool = True):
     """
     Load status-specific database.
@@ -54,12 +86,9 @@ def _ensure_trained_database(target_status: str, auto_build: bool = True):
         (database, db_file) tuple or (None, db_file) if auto_build=False and DB missing
     """
     db_file = _db_file_for_target_status(target_status)
-    original_db_file = sift.DB_FILE
     print(f"\n[DB LOAD] Switching to {target_status.upper()} database: {db_file} (auto_build={auto_build})")
-    
-    try:
-        sift.DB_FILE = db_file
-        
+
+    with _sift_db_context(db_file):
         if os.path.exists(db_file):
             print(f"[DB LOAD] File exists, attempting to load: {db_file}")
             database = sift.load_database()
@@ -72,13 +101,13 @@ def _ensure_trained_database(target_status: str, auto_build: bool = True):
                 print(f"[DB LOAD] Database file corrupt or empty")
         else:
             print(f"[DB LOAD] Database file does not exist: {db_file}")
-        
+
         # File missing or corrupt
         if not auto_build:
             print(f"[DB LOAD] auto_build=False, skipping automatic rebuild for {target_status} database")
             print(f"[DB LOAD] → Admin must manually retrain via 'Retrain {target_status.upper()} DB' button")
             return None, db_file
-        
+
         if target_status in _AUTO_BUILD_EMPTY_ATTEMPTS:
             print(f"[DB TRAIN] Skipping auto-build for {target_status} (already attempted and still empty in this server run)")
             return None, db_file
@@ -91,24 +120,22 @@ def _ensure_trained_database(target_status: str, auto_build: bool = True):
         if not database:
             _AUTO_BUILD_EMPTY_ATTEMPTS.add(target_status)
         return database, db_file
-    finally:
-        print(f"[DB LOAD] Restoring original DB_FILE")
-        sift.DB_FILE = original_db_file
 
 def train_model(gdrive_url):
-    database = sift.load_database()
-    if database:
-        print("⚠️ Database already exists. Training will overwrite the existing database.")
-    
-    result = sift.build_database_from_gdrive(gdrive_url)
-    
-    # Return JSON-serializable response (not the raw database)
-    return {
-        "success": True,
-        "message": "Training completed successfully",
-        "images_processed": len(result),
-        "database_location": sift.DB_FILE
-    }
+    with _acquire_sift_job_slot('train_model'):
+        database = sift.load_database()
+        if database:
+            print("⚠️ Database already exists. Training will overwrite the existing database.")
+
+        result = sift.build_database_from_gdrive(gdrive_url)
+
+        # Return JSON-serializable response (not the raw database)
+        return {
+            "success": True,
+            "message": "Training completed successfully",
+            "images_processed": len(result),
+            "database_location": sift.DB_FILE
+        }
 
 
 def retrain_model_for_status(report_status: str):
@@ -123,10 +150,10 @@ def retrain_model_for_status(report_status: str):
     db_file = _db_file_for_target_status(normalized_status)
     folder_url = _folder_url_for_target_status(normalized_status)
 
-    original_db_file = sift.DB_FILE
     try:
-        sift.DB_FILE = db_file
-        result = sift.build_database_from_gdrive(folder_url)
+        with _acquire_sift_job_slot(f'retrain_{normalized_status}'):
+            with _sift_db_context(db_file):
+                result = sift.build_database_from_gdrive(folder_url)
         return {
             "success": True,
             "status": normalized_status,
@@ -140,18 +167,17 @@ def retrain_model_for_status(report_status: str):
             "status": normalized_status,
             "error": str(e),
         }
-    finally:
-        sift.DB_FILE = original_db_file
 
 def process_image(image_url):
     GDRIVE_FOLDER_ID = DEFAULT_GDRIVE_OUTPUT_FOLDER_ID
 
-    database = sift.load_database()
+    with _acquire_sift_job_slot('process_image'):
+        database = sift.load_database()
 
-    if not database:
-        return {"error": "Database not found. Please train the model first."}
-    
-    result = sift.detect_from_database(image_url, database, GDRIVE_FOLDER_ID)
+        if not database:
+            return {"error": "Database not found. Please train the model first."}
+
+        result = sift.detect_from_database(image_url, database, GDRIVE_FOLDER_ID)
     
     # Convert to clean JSON response
     json_result = {
@@ -225,27 +251,34 @@ def process_image_for_report(image_url, report_status):
     print(f"\n[MATCH] Starting image matching for report")
     normalized_status = (report_status or '').strip().lower()
     print(f"[MATCH] Report status (as submitted): {normalized_status}")
-    
+
     target_status = 'lost' if normalized_status == 'found' else 'found'
     print(f"[MATCH] Will search against: {target_status.upper()} database")
     print(f"[MATCH] Reason: If user found item (status={normalized_status}), search for matching lost items")
 
-    # Auto-build target DB only when missing/corrupt
-    database, db_file = _ensure_trained_database(target_status, auto_build=True)
-    if not database:
-        print(f"[MATCH ERROR] {target_status.upper()} database not available")
+    try:
+        with _acquire_sift_job_slot(f'process_report_{target_status}'):
+            # Auto-build target DB only when missing/corrupt
+            database, db_file = _ensure_trained_database(target_status, auto_build=True)
+            if not database:
+                print(f"[MATCH ERROR] {target_status.upper()} database not available")
+                return {
+                    "success": False,
+                    "error": f"No {target_status} database available for matching."
+                }
+
+            print(f"[MATCH] Database ready ({len(database)} items). Starting matching process...")
+            output_folder_id = _extract_folder_id(Config.MATCH_RESULTS_GDRIVE_FOLDER_URL) or DEFAULT_GDRIVE_OUTPUT_FOLDER_ID
+
+            result = sift.detect_from_database(image_url, database, output_folder_id)
+            public_copy = {"success": False}
+            if result.get('success'):
+                public_copy = copy_matched_image_to_public_folder(result)
+    except RuntimeError as e:
         return {
             "success": False,
-            "error": f"No {target_status} database available for matching."
+            "error": str(e)
         }
-
-    print(f"[MATCH] Database ready ({len(database)} items). Starting matching process...")
-    output_folder_id = _extract_folder_id(Config.MATCH_RESULTS_GDRIVE_FOLDER_URL) or DEFAULT_GDRIVE_OUTPUT_FOLDER_ID
-
-    result = sift.detect_from_database(image_url, database, output_folder_id)
-    public_copy = {"success": False}
-    if result.get('success'):
-        public_copy = copy_matched_image_to_public_folder(result)
 
     json_result = {
         "success": result.get('success', False),

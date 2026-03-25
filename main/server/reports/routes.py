@@ -163,6 +163,12 @@ def report_item():
                     "report": new_report.to_json(),
                     "match_result": match_result,
                 }), 201
+            elif process_result == "Busy":
+                return jsonify({
+                    "error": message,
+                    "report": new_report.to_json(),
+                    "match_result": "Busy",
+                }), 503
             else:
                 return jsonify({
                     "message": message,
