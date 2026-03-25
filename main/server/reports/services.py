@@ -165,6 +165,9 @@ def process_report_with_image_url(image_url, data, new_report):
         return None, "Image processing failed", "Error", None
 
     if not result.get('success'):
+        error_text = (result.get('error') or '').strip()
+        if error_text.lower().startswith('sift busy:'):
+            return None, error_text, "Busy", None
         return None, "No match found in database. Report recorded for manual review.", "No Match", None
     
     student_name = data.get('student_name')

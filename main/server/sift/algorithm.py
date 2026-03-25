@@ -18,6 +18,7 @@ import requests
 import re
 import time
 import io
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from typing import Optional, List, Dict, Any
@@ -67,6 +68,7 @@ _DRIVE_SERVICE = None
 _MATCH_WORKERS = max(1, int(os.getenv('SIFT_MATCH_WORKERS', '1')))
 _DB_ENTRY_CACHE_KEY = None
 _DB_ENTRY_CACHE_VALUE = None
+_SIFT_DETECT_LOCK = threading.RLock()
 
 
 def recommend_match_workers(db_size: int) -> int:
@@ -375,7 +377,8 @@ def extract_and_save_features_enhanced(img_source, img_name, database,
             print(f"Error: Could not load image: {img_name}")
             return False
         
-        kp, desc = sift.detectAndCompute(gray, None)
+        with _SIFT_DETECT_LOCK:
+            kp, desc = sift.detectAndCompute(gray, None)
         
         if desc is not None and len(desc) > 0:
             # Store as dictionary with metadata
@@ -638,7 +641,8 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         result['error'] = error_msg
         return result
         
-    kp_test, desc_test = sift.detectAndCompute(test_gray, None)
+    with _SIFT_DETECT_LOCK:
+        kp_test, desc_test = sift.detectAndCompute(test_gray, None)
     
     if desc_test is None:
         error_msg = "No features in test image"
