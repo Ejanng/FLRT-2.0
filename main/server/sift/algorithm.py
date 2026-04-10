@@ -62,6 +62,20 @@ def _log(message: str, force: bool = False):
     if force or SIFT_DEBUG:
         print(message)
 
+
+def _audit_log(event: str, **fields):
+    payload = {
+        'event': event,
+        'ts': int(time.time()),
+        **fields,
+    }
+    print(f"SIFT_AUDIT {json.dumps(payload, sort_keys=True)}")
+
+
+def log_audit_event(event: str, **fields):
+    """Public wrapper so other modules can emit structured audit lines."""
+    _audit_log(event, **fields)
+
 _log(f"SIFT module directory: {MODULE_DIR}")
 _log(f"Resources directory: {RES_DIR}")
 _log(f"Credentials file: {GDRIVE_CREDENTIALS}")
@@ -763,6 +777,7 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, m
         Dict with success status, file metadata, or error details
     """
     if not folder_id:
+        _audit_log('gdrive_upload_error', reason='missing_folder_id', filename=filename)
         return {
             'success': False,
             'error': 'No folder_id provided'
@@ -793,6 +808,7 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, m
             service = get_drive_service()
         except Exception as auth_e:
             _log(f"AuthError: Failed to authenticate with Google Drive: {auth_e}", force=True)
+            _audit_log('gdrive_upload_error', reason='auth_failed', filename=filename, folder_id=folder_id, error=str(auth_e))
             return {
                 'success': False,
                 'error': f'Google Drive authentication failed: {auth_e}'
@@ -820,6 +836,13 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, m
                     raise Exception("Upload returned no file ID")
                 
                 _log(f"✓ Uploaded: {file.get('name')} (ID: {file.get('id')}, attempt {attempt + 1}/{max_retries})", force=True)
+                _audit_log(
+                    'gdrive_upload_success',
+                    filename=file.get('name'),
+                    file_id=file.get('id'),
+                    folder_id=file.get('parents', [folder_id])[0],
+                    attempt=attempt + 1,
+                )
                 
                 # Attempt to set proper permissions
                 try:
@@ -842,6 +865,13 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, m
             except Exception as upload_e:
                 last_error = upload_e
                 _log(f"⚠ Upload attempt {attempt + 1}/{max_retries} failed: {upload_e}", force=True)
+                _audit_log(
+                    'gdrive_upload_retry',
+                    filename=filename,
+                    folder_id=folder_id,
+                    attempt=attempt + 1,
+                    error=str(upload_e),
+                )
                 if attempt < max_retries - 1:
                     time.sleep(1 * (attempt + 1))  # Exponential backoff
         
@@ -850,6 +880,7 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, m
     except Exception as e:
         error_msg = f"Upload failed: {e}"
         _log(f"✗ {error_msg}", force=True)
+        _audit_log('gdrive_upload_error', filename=filename, folder_id=folder_id, error=error_msg)
         return {
             'success': False,
             'error': error_msg
