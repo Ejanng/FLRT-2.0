@@ -3,6 +3,7 @@ import os
 import pickle
 import re
 import threading
+import atexit
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from typing import Optional, Iterable, Set
@@ -46,6 +47,17 @@ _SIFT_QUEUE_MAX_SIZE = max(_SIFT_MAX_CONCURRENT_JOBS, int(os.getenv('SIFT_QUEUE_
 _SIFT_WORKER_POOL_SIZE = max(1, int(os.getenv('SIFT_WORKER_POOL_SIZE', str(_SIFT_MAX_CONCURRENT_JOBS))))
 _SIFT_QUEUE_SEMAPHORE = threading.BoundedSemaphore(_SIFT_QUEUE_MAX_SIZE)
 _SIFT_JOB_EXECUTOR = ThreadPoolExecutor(max_workers=_SIFT_WORKER_POOL_SIZE, thread_name_prefix='sift-job')
+
+
+def _shutdown_sift_executor():
+    try:
+        _SIFT_JOB_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+    except Exception:
+        # Best-effort shutdown during interpreter exit.
+        pass
+
+
+atexit.register(_shutdown_sift_executor)
 
 
 def _extract_folder_id(folder_url_or_id: Optional[str]) -> Optional[str]:
@@ -444,6 +456,11 @@ def upload_report_image_by_status(image_source, report_status, filename_prefix="
     """
     normalized_status = (report_status or '').strip().lower()
     if normalized_status not in ('lost', 'found'):
+        sift.log_audit_event(
+            'report_upload_error',
+            report_status=normalized_status,
+            error='invalid_status',
+        )
         return {
             "success": False,
             "error": f"Invalid report status: {normalized_status}. Must be 'lost' or 'found'"
@@ -460,6 +477,12 @@ def upload_report_image_by_status(image_source, report_status, filename_prefix="
     # Ensure folder exists (create if missing)
     folder_id = _ensure_folder_ready(folder_url, folder_name)
     if not folder_id:
+        sift.log_audit_event(
+            'report_upload_error',
+            report_status=normalized_status,
+            error='folder_unavailable',
+            folder_name=folder_name,
+        )
         return {
             "success": False,
             "error": f"Could not access or create {folder_name} folder"
@@ -476,8 +499,21 @@ def upload_report_image_by_status(image_source, report_status, filename_prefix="
     
     if result.get('success'):
         print(f"[UPLOAD] ✓ {normalized_status.upper()} report image uploaded: {result.get('name')}")
+        sift.log_audit_event(
+            'report_upload_saved',
+            report_status=normalized_status,
+            folder_id=folder_id,
+            file_id=result.get('gdrive_file_id'),
+            filename=result.get('name'),
+        )
     else:
         print(f"[UPLOAD] ✗ Failed to upload {normalized_status} report: {result.get('error')}")
+        sift.log_audit_event(
+            'report_upload_error',
+            report_status=normalized_status,
+            folder_id=folder_id,
+            error=result.get('error'),
+        )
     
     return result
 
@@ -500,6 +536,11 @@ def upload_manual_claim_image(image_source, filename_prefix="manual_claim"):
     # Ensure folder exists (create if missing)
     folder_id = _ensure_folder_ready(folder_url, folder_name)
     if not folder_id:
+        sift.log_audit_event(
+            'manual_claim_upload_error',
+            error='folder_unavailable',
+            folder_name=folder_name,
+        )
         return {
             "success": False,
             "error": "Could not access or create Manual Claims folder"
@@ -516,8 +557,19 @@ def upload_manual_claim_image(image_source, filename_prefix="manual_claim"):
     
     if result.get('success'):
         print(f"[CLAIM] ✓ Manual claim image uploaded: {result.get('name')}")
+        sift.log_audit_event(
+            'manual_claim_upload_saved',
+            folder_id=folder_id,
+            file_id=result.get('gdrive_file_id'),
+            filename=result.get('name'),
+        )
     else:
         print(f"[CLAIM] ✗ Failed to upload manual claim image: {result.get('error')}")
+        sift.log_audit_event(
+            'manual_claim_upload_error',
+            folder_id=folder_id,
+            error=result.get('error'),
+        )
     
     return result
 
@@ -540,6 +592,7 @@ def copy_matched_image_to_public_folder(result_payload):
 
     if not matched_file_id:
         print("[PUBLIC] ✗ Cannot copy: matched image has no Google Drive file ID")
+        sift.log_audit_event('public_copy_error', error='missing_matched_file_id')
         return {
             "success": False,
             "error": "Matched image has no Google Drive file id"
@@ -547,6 +600,7 @@ def copy_matched_image_to_public_folder(result_payload):
     
     if not public_folder_id:
         print("[PUBLIC] ✗ Cannot copy: invalid or inaccessible public-view folder")
+        sift.log_audit_event('public_copy_error', error='folder_unavailable')
         return {
             "success": False,
             "error": "Could not access or create public-view Drive folder"
@@ -581,6 +635,13 @@ def copy_matched_image_to_public_folder(result_payload):
             # Non-critical - continue anyway
 
         print(f"[PUBLIC] ✓ Image copied to public folder: {copied_file.get('name')}")
+        sift.log_audit_event(
+            'public_copy_saved',
+            source_file_id=matched_file_id,
+            folder_id=public_folder_id,
+            file_id=copied_file.get('id'),
+            filename=copied_file.get('name'),
+        )
         
         return {
             "success": True,
@@ -592,6 +653,12 @@ def copy_matched_image_to_public_folder(result_payload):
     except Exception as e:
         error_msg = f"Failed to copy to public folder: {e}"
         print(f"[PUBLIC] ✗ {error_msg}")
+        sift.log_audit_event(
+            'public_copy_error',
+            source_file_id=matched_file_id,
+            folder_id=public_folder_id,
+            error=error_msg,
+        )
         return {
             "success": False,
             "error": error_msg
@@ -612,6 +679,11 @@ def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder
         Dict with success status and file metadata or error details
     """
     if not folder_id:
+        sift.log_audit_event(
+            'gdrive_upload_wrapper_error',
+            filename_prefix=filename_prefix,
+            reason='invalid_folder_id',
+        )
         return {
             "success": False,
             "error": "Invalid folder ID provided for upload"
@@ -626,6 +698,13 @@ def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder
             try:
                 image_array, source_type = sift.load_image_from_source(image_source)
             except Exception as load_e:
+                sift.log_audit_event(
+                    'gdrive_upload_wrapper_error',
+                    filename_prefix=filename_prefix,
+                    folder_id=folder_id,
+                    reason='load_failed',
+                    error=str(load_e),
+                )
                 return {
                     "success": False,
                     "error": f"Failed to load image: {load_e}"
@@ -641,6 +720,14 @@ def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder
             )
             
             if upload_result.get('success'):
+                sift.log_audit_event(
+                    'gdrive_upload_wrapper_saved',
+                    filename_prefix=filename_prefix,
+                    folder_id=folder_id,
+                    file_id=upload_result.get('id'),
+                    filename=upload_result.get('name'),
+                    source_type=source_type,
+                )
                 return {
                     "success": True,
                     "gdrive_file_id": upload_result.get('id'),
@@ -655,8 +742,22 @@ def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder
                 if retry_count < max_retries:
                     import time
                     time.sleep(1 * retry_count)  # Exponential backoff
+                    sift.log_audit_event(
+                        'gdrive_upload_wrapper_retry',
+                        filename_prefix=filename_prefix,
+                        folder_id=folder_id,
+                        attempt=retry_count,
+                        error=last_error,
+                    )
                     continue
                 else:
+                    sift.log_audit_event(
+                        'gdrive_upload_wrapper_error',
+                        filename_prefix=filename_prefix,
+                        folder_id=folder_id,
+                        reason='max_retries_reached',
+                        error=last_error,
+                    )
                     return {
                         "success": False,
                         "error": f"Upload failed after {max_retries} attempts: {last_error}"
@@ -668,8 +769,22 @@ def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder
             if retry_count < max_retries:
                 import time
                 time.sleep(1 * retry_count)
+                sift.log_audit_event(
+                    'gdrive_upload_wrapper_retry',
+                    filename_prefix=filename_prefix,
+                    folder_id=folder_id,
+                    attempt=retry_count,
+                    error=last_error,
+                )
                 continue
             else:
+                sift.log_audit_event(
+                    'gdrive_upload_wrapper_error',
+                    filename_prefix=filename_prefix,
+                    folder_id=folder_id,
+                    reason='exception',
+                    error=last_error,
+                )
                 return {
                     "success": False,
                     "error": f"Upload exception after {max_retries} attempts: {last_error}"
