@@ -13,6 +13,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import os
+import json
+import base64
 import argparse
 import requests
 import re
@@ -23,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from typing import Optional, List, Dict, Any
 from google.oauth2.credentials import Credentials
+from google.oauth2 import service_account
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -44,6 +47,10 @@ os.makedirs(os.path.join(RES_DIR, 'train'), exist_ok=True)
 
 # File paths
 GDRIVE_CREDENTIALS = os.path.join(RES_DIR, "client_secret.json")
+GDRIVE_SERVICE_ACCOUNT_FILE = os.getenv(
+    'GOOGLE_SERVICE_ACCOUNT_FILE',
+    os.path.join(RES_DIR, 'credentials.json')
+)
 TOKEN_FILE = os.path.join(RES_DIR, "token.pickle")
 DB_FILE = os.path.join(RES_DIR, "sift_database.pkl")
 IMAGE_DIR = os.path.join(RES_DIR, "train")
@@ -72,6 +79,9 @@ _SIFT_DETECT_LOCK = threading.RLock()
 _DRIVE_ACCOUNT_LOGGED = False
 _ACTIVE_DETECTIONS = 0
 _ACTIVE_DETECTIONS_LOCK = threading.Lock()
+_PREFER_SERVICE_ACCOUNT = os.getenv('SIFT_PREFER_SERVICE_ACCOUNT', '1').strip().lower() in (
+    '1', 'true', 'yes', 'on'
+)
 
 
 def recommend_match_workers(db_size: int) -> int:
@@ -105,11 +115,22 @@ flann = cv2.FlannBasedMatcher(flannParam, {})
 
 def get_drive_service():
     """
-    Authenticate using OAuth (user account) - reuses saved token if available
+    Authenticate Google Drive in this order:
+    1) Service account (Render/server-friendly)
+    2) Existing OAuth token.pickle
+    3) Interactive OAuth flow (local/dev)
     """
     global _DRIVE_SERVICE
     if _DRIVE_SERVICE is not None:
         return _DRIVE_SERVICE
+
+    if _PREFER_SERVICE_ACCOUNT:
+        service_account_creds = _load_service_account_credentials()
+        if service_account_creds is not None:
+            _DRIVE_SERVICE = build('drive', 'v3', credentials=service_account_creds)
+            _log("Using Google Drive service account authentication", force=True)
+            _log_authenticated_google_account(_DRIVE_SERVICE)
+            return _DRIVE_SERVICE
 
     creds = None
     
@@ -157,6 +178,38 @@ def get_drive_service():
     _DRIVE_SERVICE = build('drive', 'v3', credentials=creds)
     _log_authenticated_google_account(_DRIVE_SERVICE)
     return _DRIVE_SERVICE
+
+
+def _load_service_account_credentials():
+    """Load service account credentials from env JSON/base64 or a JSON file path."""
+    json_text = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON', '').strip()
+    json_b64 = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON_B64', '').strip()
+
+    if json_text:
+        try:
+            info = json.loads(json_text)
+            return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+        except Exception as e:
+            _log(f"Service account JSON env parse failed: {e}", force=True)
+
+    if json_b64:
+        try:
+            decoded = base64.b64decode(json_b64).decode('utf-8')
+            info = json.loads(decoded)
+            return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+        except Exception as e:
+            _log(f"Service account base64 env parse failed: {e}", force=True)
+
+    if os.path.exists(GDRIVE_SERVICE_ACCOUNT_FILE):
+        try:
+            return service_account.Credentials.from_service_account_file(
+                GDRIVE_SERVICE_ACCOUNT_FILE,
+                scopes=SCOPES,
+            )
+        except Exception as e:
+            _log(f"Service account file load failed ({GDRIVE_SERVICE_ACCOUNT_FILE}): {e}", force=True)
+
+    return None
 
 
 def _log_authenticated_google_account(service):
