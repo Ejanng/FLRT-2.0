@@ -69,6 +69,9 @@ _MATCH_WORKERS = max(1, int(os.getenv('SIFT_MATCH_WORKERS', '1')))
 _DB_ENTRY_CACHE_KEY = None
 _DB_ENTRY_CACHE_VALUE = None
 _SIFT_DETECT_LOCK = threading.RLock()
+_DRIVE_ACCOUNT_LOGGED = False
+_ACTIVE_DETECTIONS = 0
+_ACTIVE_DETECTIONS_LOCK = threading.Lock()
 
 
 def recommend_match_workers(db_size: int) -> int:
@@ -79,6 +82,14 @@ def recommend_match_workers(db_size: int) -> int:
     if db_size < 200:
         return 4
     return 6
+
+
+def _compute_effective_match_workers(db_size: int) -> int:
+    """Adapt in-request matcher parallelism based on active detection load."""
+    baseline = min(_MATCH_WORKERS, recommend_match_workers(db_size))
+    with _ACTIVE_DETECTIONS_LOCK:
+        active = max(1, _ACTIVE_DETECTIONS)
+    return max(1, baseline // active)
 
 # Initiate SIFT detector
 try:
@@ -144,7 +155,26 @@ def get_drive_service():
         _log("Ok: Using existing valid credentials")
     
     _DRIVE_SERVICE = build('drive', 'v3', credentials=creds)
+    _log_authenticated_google_account(_DRIVE_SERVICE)
     return _DRIVE_SERVICE
+
+
+def _log_authenticated_google_account(service):
+    """Debug helper: prints which Google account is currently authenticated."""
+    global _DRIVE_ACCOUNT_LOGGED
+    if _DRIVE_ACCOUNT_LOGGED:
+        return
+
+    try:
+        about = service.about().get(fields='user(displayName,emailAddress)').execute()
+        user = about.get('user') or {}
+        email = user.get('emailAddress') or 'unknown-email'
+        display_name = user.get('displayName') or 'Unknown User'
+        _log(f"🔐 Google Drive authenticated as: {display_name} <{email}>", force=True)
+    except Exception as e:
+        _log(f"⚠️ Could not fetch authenticated Google account details: {e}", force=True)
+    finally:
+        _DRIVE_ACCOUNT_LOGGED = True
 
 
 def extract_gdrive_file_id(url):
@@ -605,6 +635,8 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
     Detect/match test image against trained database
     Returns enhanced result with both query and matched image info
     """
+    global _ACTIVE_DETECTIONS
+
     result = {
         'success': False,
         'best_match': None,
@@ -660,11 +692,26 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
     
     normalized_entries = _normalize_database_entries(database)
 
-    if _MATCH_WORKERS > 1 and len(normalized_entries) >= 20:
-        with ThreadPoolExecutor(max_workers=_MATCH_WORKERS) as executor:
-            score_results = list(executor.map(lambda e: _score_entry(desc_test, e), normalized_entries))
-    else:
-        score_results = [_score_entry(desc_test, entry) for entry in normalized_entries]
+    effective_workers = 1
+    with _ACTIVE_DETECTIONS_LOCK:
+        _ACTIVE_DETECTIONS += 1
+        active_snapshot = _ACTIVE_DETECTIONS
+
+    try:
+        effective_workers = _compute_effective_match_workers(len(normalized_entries))
+        _log(
+            f"SIFT load balance: active_detections={active_snapshot}, "
+            f"match_workers={effective_workers}, db_size={len(normalized_entries)}",
+        )
+
+        if effective_workers > 1 and len(normalized_entries) >= 20:
+            with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+                score_results = list(executor.map(lambda e: _score_entry(desc_test, e), normalized_entries))
+        else:
+            score_results = [_score_entry(desc_test, entry) for entry in normalized_entries]
+    finally:
+        with _ACTIVE_DETECTIONS_LOCK:
+            _ACTIVE_DETECTIONS = max(0, _ACTIVE_DETECTIONS - 1)
 
     for entry_dict, metrics in score_results:
         score = metrics['good_matches']

@@ -3,6 +3,7 @@ import os
 import pickle
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from typing import Optional, Iterable, Set
 from core.config import Config
@@ -20,7 +21,11 @@ _AUTO_BUILD_EMPTY_ATTEMPTS: set[str] = set()
 _DB_FILE_SWITCH_LOCK = threading.RLock()
 _SIFT_MAX_CONCURRENT_JOBS = max(1, int(os.getenv('SIFT_MAX_CONCURRENT_JOBS', '2')))
 _SIFT_JOB_WAIT_TIMEOUT_SECONDS = max(1, int(os.getenv('SIFT_JOB_WAIT_TIMEOUT_SECONDS', '25')))
-_SIFT_JOB_SEMAPHORE = threading.BoundedSemaphore(_SIFT_MAX_CONCURRENT_JOBS)
+_SIFT_JOB_EXEC_TIMEOUT_SECONDS = max(5, int(os.getenv('SIFT_JOB_EXEC_TIMEOUT_SECONDS', '180')))
+_SIFT_QUEUE_MAX_SIZE = max(_SIFT_MAX_CONCURRENT_JOBS, int(os.getenv('SIFT_QUEUE_MAX_SIZE', str(_SIFT_MAX_CONCURRENT_JOBS * 3))))
+_SIFT_WORKER_POOL_SIZE = max(1, int(os.getenv('SIFT_WORKER_POOL_SIZE', str(_SIFT_MAX_CONCURRENT_JOBS))))
+_SIFT_QUEUE_SEMAPHORE = threading.BoundedSemaphore(_SIFT_QUEUE_MAX_SIZE)
+_SIFT_JOB_EXECUTOR = ThreadPoolExecutor(max_workers=_SIFT_WORKER_POOL_SIZE, thread_name_prefix='sift-job')
 
 
 def _extract_folder_id(folder_url_or_id: Optional[str]) -> Optional[str]:
@@ -59,18 +64,34 @@ def _sift_db_context(db_file: str):
             sift.DB_FILE = original_db_file
 
 
-@contextmanager
-def _acquire_sift_job_slot(job_name: str):
-    acquired = _SIFT_JOB_SEMAPHORE.acquire(timeout=_SIFT_JOB_WAIT_TIMEOUT_SECONDS)
+def _run_sift_job(job_name: str, func, *args, **kwargs):
+    """
+    Queue a SIFT job on a bounded worker pool.
+
+    This provides basic load balancing for concurrent users:
+    - bounded queue depth (backpressure)
+    - fixed worker pool (controlled CPU usage)
+    - configurable wait and execution timeout
+    """
+    acquired = _SIFT_QUEUE_SEMAPHORE.acquire(timeout=_SIFT_JOB_WAIT_TIMEOUT_SECONDS)
     if not acquired:
         raise RuntimeError(
-            f"SIFT busy: too many concurrent jobs. Try again shortly. "
-            f"(max={_SIFT_MAX_CONCURRENT_JOBS}, wait_timeout={_SIFT_JOB_WAIT_TIMEOUT_SECONDS}s, job={job_name})"
+            "SIFT busy: queue is full. Try again shortly. "
+            f"(workers={_SIFT_WORKER_POOL_SIZE}, queue_max={_SIFT_QUEUE_MAX_SIZE}, "
+            f"wait_timeout={_SIFT_JOB_WAIT_TIMEOUT_SECONDS}s, job={job_name})"
         )
+
     try:
-        yield
+        future = _SIFT_JOB_EXECUTOR.submit(func, *args, **kwargs)
+        try:
+            return future.result(timeout=_SIFT_JOB_EXEC_TIMEOUT_SECONDS)
+        except FuturesTimeoutError:
+            future.cancel()
+            raise RuntimeError(
+                f"SIFT job timeout after {_SIFT_JOB_EXEC_TIMEOUT_SECONDS}s (job={job_name})"
+            )
     finally:
-        _SIFT_JOB_SEMAPHORE.release()
+        _SIFT_QUEUE_SEMAPHORE.release()
 
 
 def _ensure_trained_database(target_status: str, auto_build: bool = True):
@@ -122,7 +143,7 @@ def _ensure_trained_database(target_status: str, auto_build: bool = True):
         return database, db_file
 
 def train_model(gdrive_url):
-    with _acquire_sift_job_slot('train_model'):
+    def _job():
         database = sift.load_database()
         if database:
             print("⚠️ Database already exists. Training will overwrite the existing database.")
@@ -137,6 +158,8 @@ def train_model(gdrive_url):
             "database_location": sift.DB_FILE
         }
 
+    return _run_sift_job('train_model', _job)
+
 
 def retrain_model_for_status(report_status: str):
     """Rebuild a specific status dataset DB from its mapped Drive folder."""
@@ -150,34 +173,44 @@ def retrain_model_for_status(report_status: str):
     db_file = _db_file_for_target_status(normalized_status)
     folder_url = _folder_url_for_target_status(normalized_status)
 
-    try:
-        with _acquire_sift_job_slot(f'retrain_{normalized_status}'):
+    def _job():
+        try:
             with _sift_db_context(db_file):
                 result = sift.build_database_from_gdrive(folder_url)
-        return {
-            "success": True,
-            "status": normalized_status,
-            "images_processed": len(result),
-            "database_location": db_file,
-            "source_folder": folder_url,
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "status": normalized_status,
-            "error": str(e),
-        }
+            return {
+                "success": True,
+                "status": normalized_status,
+                "images_processed": len(result),
+                "database_location": db_file,
+                "source_folder": folder_url,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "status": normalized_status,
+                "error": str(e),
+            }
+
+    return _run_sift_job(f'retrain_{normalized_status}', _job)
 
 def process_image(image_url):
     GDRIVE_FOLDER_ID = DEFAULT_GDRIVE_OUTPUT_FOLDER_ID
 
-    with _acquire_sift_job_slot('process_image'):
+    def _job():
         database = sift.load_database()
 
         if not database:
             return {"error": "Database not found. Please train the model first."}
 
-        result = sift.detect_from_database(image_url, database, GDRIVE_FOLDER_ID)
+        return sift.detect_from_database(image_url, database, GDRIVE_FOLDER_ID)
+
+    try:
+        result = _run_sift_job('process_image', _job)
+    except RuntimeError as e:
+        return {
+            "success": False,
+            "error": str(e),
+        }
     
     # Convert to clean JSON response
     json_result = {
@@ -257,7 +290,7 @@ def process_image_for_report(image_url, report_status):
     print(f"[MATCH] Reason: If user found item (status={normalized_status}), search for matching lost items")
 
     try:
-        with _acquire_sift_job_slot(f'process_report_{target_status}'):
+        def _job():
             # Auto-build target DB only when missing/corrupt
             database, db_file = _ensure_trained_database(target_status, auto_build=True)
             if not database:
@@ -274,6 +307,9 @@ def process_image_for_report(image_url, report_status):
             public_copy = {"success": False}
             if result.get('success'):
                 public_copy = copy_matched_image_to_public_folder(result)
+            return result, public_copy, db_file
+
+        result, public_copy, db_file = _run_sift_job(f'process_report_{target_status}', _job)
     except RuntimeError as e:
         return {
             "success": False,
