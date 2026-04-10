@@ -602,6 +602,7 @@ def copy_matched_image_to_public_folder(result_payload):
                 'parents': [public_folder_id],
             },
             fields='id, name, webViewLink',
+            supportsAllDrives=True,
         ).execute()
         
         if not copied_file.get('id'):
@@ -612,6 +613,7 @@ def copy_matched_image_to_public_folder(result_payload):
             service.permissions().create(
                 fileId=copied_file.get('id'),
                 body={'type': 'anyone', 'role': 'reader'},
+                supportsAllDrives=True,
             ).execute()
             _log(f"[PUBLIC] public permissions set name={copied_file.get('name')}")
         except Exception as perm_e:
@@ -833,13 +835,18 @@ def _move_files_to_folder(service, file_ids: Set[str], folder_id: Optional[str],
     details = []
     for file_id in file_ids:
         try:
-            file_metadata = service.files().get(fileId=file_id, fields='id, name, parents').execute()
+            file_metadata = service.files().get(
+                fileId=file_id,
+                fields='id, name, parents',
+                supportsAllDrives=True,
+            ).execute()
             previous_parents = ','.join(file_metadata.get('parents', []))
             service.files().update(
                 fileId=file_id,
                 addParents=folder_id,
                 removeParents=previous_parents,
                 fields='id, name, parents',
+                supportsAllDrives=True,
             ).execute()
             moved += 1
             details.append({

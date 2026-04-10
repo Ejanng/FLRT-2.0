@@ -168,9 +168,9 @@ def get_drive_service():
     _log_authenticated_google_account(_DRIVE_SERVICE)
 
     try:
-        initialize_required_gdrive_folders(_DRIVE_SERVICE)
+        validate_required_gdrive_folders(_DRIVE_SERVICE)
     except Exception as e:
-        _log(f"Folder initialization failed (non-blocking): {e}", force=True)
+        _log(f"Folder validation failed (non-blocking): {e}", force=True)
 
     return _DRIVE_SERVICE
 
@@ -212,7 +212,8 @@ def extract_folder_id(folder_url_or_id):
 
 def ensure_gdrive_folder_exists(service, folder_url_or_id, folder_name):
     """
-    Ensure folder exists by trying configured ID; if inaccessible, create a new folder.
+    Validate that folder exists and is accessible by the service account.
+    This function does not create folders automatically.
     """
     if not folder_url_or_id:
         _log(f"Folder check failed: no folder URL/ID for '{folder_name}'", force=True)
@@ -224,29 +225,22 @@ def ensure_gdrive_folder_exists(service, folder_url_or_id, folder_name):
         return None
 
     try:
-        meta = service.files().get(fileId=folder_id, fields='id,name,mimeType').execute()
+        meta = service.files().get(
+            fileId=folder_id,
+            fields='id,name,mimeType',
+            supportsAllDrives=True,
+        ).execute()
         if meta.get('mimeType') == 'application/vnd.google-apps.folder':
             _log(f"Folder exists: '{folder_name}' (ID: {folder_id})", force=True)
             return folder_id
+        _log(f"Configured ID is not a folder for '{folder_name}' (ID: {folder_id})", force=True)
+        return None
     except Exception as e:
-        _log(
-            f"Folder missing/inaccessible: '{folder_name}' ({folder_id}). Creating new folder. Cause: {e}",
-            force=True,
-        )
-
-    try:
-        created = service.files().create(
-            body={'name': folder_name, 'mimeType': 'application/vnd.google-apps.folder'},
-            fields='id,name,webViewLink',
-        ).execute()
-        _log(f"Folder CREATED: '{created.get('name')}' (ID: {created.get('id')})", force=True)
-        return created.get('id')
-    except Exception as create_e:
-        _log(f"Failed to create folder '{folder_name}': {create_e}", force=True)
+        _log(f"Folder missing/inaccessible: '{folder_name}' (ID: {folder_id}). Cause: {e}", force=True)
         return None
 
 
-def initialize_required_gdrive_folders(service):
+def validate_required_gdrive_folders(service):
     from core.config import Config
 
     folders_config = [
@@ -287,6 +281,8 @@ def list_images_in_folder(service, folder_id):
             fields='nextPageToken, files(id,name,mimeType,size)',
             pageSize=1000,
             pageToken=page_token,
+            includeItemsFromAllDrives=True,
+            supportsAllDrives=True,
         ).execute()
         files.extend(results.get('files', []))
         page_token = results.get('nextPageToken')
@@ -565,6 +561,7 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, m
                     body=file_metadata,
                     media_body=media,
                     fields='id,name,webViewLink,mimeType,parents',
+                    supportsAllDrives=True,
                 ).execute()
 
                 if not file.get('id'):
