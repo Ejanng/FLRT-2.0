@@ -36,7 +36,7 @@ def _ensure_folder_ready(folder_url_or_id: Optional[str], folder_name: str) -> O
         folder_id = sift.ensure_gdrive_folder_exists(service, folder_url_or_id, folder_name)
         return folder_id
     except Exception as e:
-        print(f"[FOLDER ERROR] Could not ensure folder ready '{folder_name}': {e}")
+        _log(f"[FOLDER ERROR] Could not ensure folder ready '{folder_name}': {e}", force=True)
         return None
 
 _DB_FILE_SWITCH_LOCK = threading.RLock()
@@ -47,6 +47,12 @@ _SIFT_QUEUE_MAX_SIZE = max(_SIFT_MAX_CONCURRENT_JOBS, int(os.getenv('SIFT_QUEUE_
 _SIFT_WORKER_POOL_SIZE = max(1, int(os.getenv('SIFT_WORKER_POOL_SIZE', str(_SIFT_MAX_CONCURRENT_JOBS))))
 _SIFT_QUEUE_SEMAPHORE = threading.BoundedSemaphore(_SIFT_QUEUE_MAX_SIZE)
 _SIFT_JOB_EXECUTOR = ThreadPoolExecutor(max_workers=_SIFT_WORKER_POOL_SIZE, thread_name_prefix='sift-job')
+_SIFT_VERBOSE_LOGS = os.getenv('SIFT_VERBOSE_LOGS', '0').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _log(message: str, force: bool = False):
+    if force or _SIFT_VERBOSE_LOGS:
+        print(message)
 
 
 def _shutdown_sift_executor():
@@ -139,37 +145,34 @@ def _ensure_trained_database(target_status: str, auto_build: bool = True):
         (database, db_file) tuple or (None, db_file) if auto_build=False and DB missing
     """
     db_file = _db_file_for_target_status(target_status)
-    print(f"\n[DB LOAD] Switching to {target_status.upper()} database: {db_file} (auto_build={auto_build})")
+    _log(f"[DB LOAD] status={target_status} db={db_file} auto_build={auto_build}")
 
     with _sift_db_context(db_file):
         if os.path.exists(db_file):
-            print(f"[DB LOAD] File exists, attempting to load: {db_file}")
+            _log(f"[DB LOAD] existing db file: {db_file}")
             database = sift.load_database()
             if database is not None:
-                print(f"[DB LOAD] Successfully loaded {target_status} database with {len(database)} entries")
+                _log(f"[DB LOAD] loaded entries={len(database)} status={target_status}")
                 if len(database) > 0 and target_status in _AUTO_BUILD_EMPTY_ATTEMPTS:
                     _AUTO_BUILD_EMPTY_ATTEMPTS.discard(target_status)
                 return database, db_file
-            else:
-                print(f"[DB LOAD] Database file corrupt or empty")
         else:
-            print(f"[DB LOAD] Database file does not exist: {db_file}")
+            _log(f"[DB LOAD] db file missing: {db_file}")
 
         # File missing or corrupt
         if not auto_build:
-            print(f"[DB LOAD] auto_build=False, skipping automatic rebuild for {target_status} database")
-            print(f"[DB LOAD] → Admin must manually retrain via 'Retrain {target_status.upper()} DB' button")
+            _log(f"[DB LOAD] auto_build disabled for status={target_status}")
             return None, db_file
 
         if target_status in _AUTO_BUILD_EMPTY_ATTEMPTS:
-            print(f"[DB TRAIN] Skipping auto-build for {target_status} (already attempted and still empty in this server run)")
+            _log(f"[DB TRAIN] skipping repeated empty auto-build for status={target_status}")
             return None, db_file
 
         # Auto-build only if explicitly enabled
         folder_url = _folder_url_for_target_status(target_status)
-        print(f"[DB TRAIN] auto_build=True, training {target_status} database from folder: {folder_url}")
+        _log(f"[DB TRAIN] training status={target_status} from={folder_url}")
         database = sift.build_database_from_gdrive(folder_url)
-        print(f"[DB TRAIN] Training complete. Database now has {len(database) if database else 0} entries")
+        _log(f"[DB TRAIN] completed status={target_status} entries={len(database) if database else 0}")
         if not database:
             _AUTO_BUILD_EMPTY_ATTEMPTS.add(target_status)
         return database, db_file
@@ -178,7 +181,7 @@ def train_model(gdrive_url):
     def _job():
         database = sift.load_database()
         if database:
-            print("⚠️ Database already exists. Training will overwrite the existing database.")
+            _log("[DB TRAIN] existing database will be overwritten", force=True)
 
         result = sift.build_database_from_gdrive(gdrive_url)
 
@@ -282,23 +285,11 @@ def process_image(image_url):
         "error": result.get('error')
     }
     
-    # Print summary
-    print(f"\nRESULT SUMMARY:")
-    print(f"   Success: {json_result['success']}")
-    print(f"\n   QUERY IMAGE:")
-    print(f"      Source: {json_result['query_image']['original_source'][:60]}...")
-    print(f"      Type: {json_result['query_image']['source_type']}")
-    print(f"      Saved to GDrive: {json_result['query_image']['saved_to_gdrive']}")
-    if json_result['query_image'].get('gdrive_view_link'):
-        print(f"      View Link: {json_result['query_image']['gdrive_view_link']}")
-    
-    print(f"\n   MATCHED IMAGE:")
-    print(f"      Name: {json_result['matched_image']['name']}")
-    print(f"      Score: {json_result['matched_image']['match_score']}")
-    print(f"      Source URL: {json_result['matched_image'].get('source_url', 'N/A')}")
-    print(f"      Source Type: {json_result['matched_image'].get('source_type', 'N/A')}")
-    if json_result['matched_image'].get('gdrive_view_link'):
-        print(f"      GDrive Link: {json_result['matched_image']['gdrive_view_link']}")
+    _log(
+        f"[PROCESS RESULT] success={json_result['success']} "
+        f"match={json_result['matched_image'].get('name')} "
+        f"score={json_result['matched_image'].get('match_score')}"
+    )
     
     return json_result
 
@@ -315,12 +306,10 @@ def process_image_for_report(image_url, report_status):
     
     Returns organized match results with proper error handling.
     """
-    print(f"\n{'='*60}")
-    print(f"[MATCH] Starting image matching workflow for report")
-    print(f"{'='*60}")
+    _log("[MATCH] starting image matching workflow")
     
     normalized_status = (report_status or '').strip().lower()
-    print(f"[MATCH] Report status submitted: {normalized_status}")
+    _log(f"[MATCH] report status={normalized_status}")
     
     if normalized_status not in ('lost', 'found'):
         return {
@@ -329,8 +318,7 @@ def process_image_for_report(image_url, report_status):
         }
 
     target_status = 'lost' if normalized_status == 'found' else 'found'
-    print(f"[MATCH] Will search against: {target_status.upper()} database")
-    print(f"[MATCH] Logic: {normalized_status.upper()} report matches against {target_status.upper()} items")
+    _log(f"[MATCH] target status={target_status}")
 
     try:
         def _job():
@@ -338,32 +326,32 @@ def process_image_for_report(image_url, report_status):
             try:
                 database, db_file = _ensure_trained_database(target_status, auto_build=True)
             except Exception as db_e:
-                print(f"[MATCH ERROR] Database loading failed: {db_e}")
+                _log(f"[MATCH ERROR] database loading failed: {db_e}", force=True)
                 return {
                     "success": False,
                     "error": f"Database error: {db_e}"
                 }
             
             if not database:
-                print(f"[MATCH ERROR] {target_status.upper()} database not available")
+                _log(f"[MATCH ERROR] {target_status} database not available", force=True)
                 return {
                     "success": False,
                     "error": f"No {target_status} database available for matching. Admin needs to retrain."
                 }
 
-            print(f"[MATCH] Database ready with {len(database)} items. Starting matching...")
+            _log(f"[MATCH] database ready with {len(database)} items")
             
             # Ensure match results folder exists (create if missing)
             output_folder_id = _ensure_folder_ready(
                 Config.MATCH_RESULTS_GDRIVE_FOLDER_URL, 
                 "Match Results"
             ) or DEFAULT_GDRIVE_OUTPUT_FOLDER_ID
-            print(f"[MATCH] Match results will be saved to folder: {output_folder_id}")
+            _log(f"[MATCH] result folder={output_folder_id}")
 
             try:
                 result = sift.detect_from_database(image_url, database, output_folder_id)
             except Exception as detect_e:
-                print(f"[MATCH ERROR] Detection failed: {detect_e}")
+                _log(f"[MATCH ERROR] detection failed: {detect_e}", force=True)
                 return {
                     "success": False,
                     "error": f"Matching failed: {detect_e}"
@@ -372,7 +360,7 @@ def process_image_for_report(image_url, report_status):
             # If match found, copy to public folder for sharing
             public_copy = {"success": False, "error": "No match to share"}
             if result.get('success'):
-                print(f"[MATCH] ✓ Match found! Copying to public folder...")
+                _log("[MATCH] match found; copying to public folder")
                 public_copy = copy_matched_image_to_public_folder(result)
             
             return result, public_copy, db_file
@@ -381,14 +369,14 @@ def process_image_for_report(image_url, report_status):
         
     except RuntimeError as e:
         error_msg = f"SIFT job error: {e}"
-        print(f"[MATCH ERROR] {error_msg}")
+        _log(f"[MATCH ERROR] {error_msg}", force=True)
         return {
             "success": False,
             "error": error_msg
         }
     except Exception as e:
         error_msg = f"Unexpected error during matching: {e}"
-        print(f"[MATCH ERROR] {error_msg}")
+        _log(f"[MATCH ERROR] {error_msg}", force=True)
         return {
             "success": False,
             "error": error_msg
@@ -428,15 +416,11 @@ def process_image_for_report(image_url, report_status):
         "error": result.get('error')
     }
 
-    print(f"\n[MATCH RESULT SUMMARY]")
-    print(f"   Success: {json_result['success']}")
-    if json_result['success']:
-        print(f"   Match found: {json_result['matched_image'].get('name')}")
-        print(f"   Match score: {json_result['matched_image'].get('match_score')}")
-        print(f"   Public copy: {public_copy.get('success')}")
-    else:
-        print(f"   Error: {json_result['error']}")
-    print(f"{'='*60}\n")
+    _log(
+        f"[MATCH RESULT] success={json_result['success']} "
+        f"score={json_result['matched_image'].get('match_score')} "
+        f"public_copy={public_copy.get('success')}"
+    )
     
     return json_result
 
@@ -488,7 +472,7 @@ def upload_report_image_by_status(image_source, report_status, filename_prefix="
             "error": f"Could not access or create {folder_name} folder"
         }
     
-    print(f"[UPLOAD] Uploading {normalized_status} report image to folder: {folder_id}")
+    _log(f"[UPLOAD] status={normalized_status} folder={folder_id}")
     
     result = upload_image_to_gdrive(
         image_source, 
@@ -498,7 +482,7 @@ def upload_report_image_by_status(image_source, report_status, filename_prefix="
     )
     
     if result.get('success'):
-        print(f"[UPLOAD] ✓ {normalized_status.upper()} report image uploaded: {result.get('name')}")
+        _log(f"[UPLOAD] success name={result.get('name')}")
         sift.log_audit_event(
             'report_upload_saved',
             report_status=normalized_status,
@@ -507,7 +491,7 @@ def upload_report_image_by_status(image_source, report_status, filename_prefix="
             filename=result.get('name'),
         )
     else:
-        print(f"[UPLOAD] ✗ Failed to upload {normalized_status} report: {result.get('error')}")
+        _log(f"[UPLOAD] failed: {result.get('error')}", force=True)
         sift.log_audit_event(
             'report_upload_error',
             report_status=normalized_status,
@@ -546,7 +530,7 @@ def upload_manual_claim_image(image_source, filename_prefix="manual_claim"):
             "error": "Could not access or create Manual Claims folder"
         }
     
-    print(f"[CLAIM] Uploading manual claim image to folder: {folder_id}")
+    _log(f"[CLAIM] upload folder={folder_id}")
     
     result = upload_image_to_gdrive(
         image_source, 
@@ -556,7 +540,7 @@ def upload_manual_claim_image(image_source, filename_prefix="manual_claim"):
     )
     
     if result.get('success'):
-        print(f"[CLAIM] ✓ Manual claim image uploaded: {result.get('name')}")
+        _log(f"[CLAIM] success name={result.get('name')}")
         sift.log_audit_event(
             'manual_claim_upload_saved',
             folder_id=folder_id,
@@ -564,7 +548,7 @@ def upload_manual_claim_image(image_source, filename_prefix="manual_claim"):
             filename=result.get('name'),
         )
     else:
-        print(f"[CLAIM] ✗ Failed to upload manual claim image: {result.get('error')}")
+        _log(f"[CLAIM] failed: {result.get('error')}", force=True)
         sift.log_audit_event(
             'manual_claim_upload_error',
             folder_id=folder_id,
@@ -591,7 +575,7 @@ def copy_matched_image_to_public_folder(result_payload):
     )
 
     if not matched_file_id:
-        print("[PUBLIC] ✗ Cannot copy: matched image has no Google Drive file ID")
+        _log("[PUBLIC] missing matched image file id", force=True)
         sift.log_audit_event('public_copy_error', error='missing_matched_file_id')
         return {
             "success": False,
@@ -599,7 +583,7 @@ def copy_matched_image_to_public_folder(result_payload):
         }
     
     if not public_folder_id:
-        print("[PUBLIC] ✗ Cannot copy: invalid or inaccessible public-view folder")
+        _log("[PUBLIC] invalid or inaccessible public-view folder", force=True)
         sift.log_audit_event('public_copy_error', error='folder_unavailable')
         return {
             "success": False,
@@ -609,7 +593,7 @@ def copy_matched_image_to_public_folder(result_payload):
     try:
         service = sift.get_drive_service()
         
-        print(f"[PUBLIC] Copying matched image to public folder: {matched_file_id}")
+        _log(f"[PUBLIC] copying file={matched_file_id} to folder={public_folder_id}")
         
         copied_file = service.files().copy(
             fileId=matched_file_id,
@@ -629,12 +613,12 @@ def copy_matched_image_to_public_folder(result_payload):
                 fileId=copied_file.get('id'),
                 body={'type': 'anyone', 'role': 'reader'},
             ).execute()
-            print(f"[PUBLIC] ✓ Public permissions set for: {copied_file.get('name')}")
+            _log(f"[PUBLIC] public permissions set name={copied_file.get('name')}")
         except Exception as perm_e:
-            print(f"[PUBLIC] ⚠ Warning: Could not set public permissions: {perm_e}")
+            _log(f"[PUBLIC] permission warning: {perm_e}", force=True)
             # Non-critical - continue anyway
 
-        print(f"[PUBLIC] ✓ Image copied to public folder: {copied_file.get('name')}")
+        _log(f"[PUBLIC] copied name={copied_file.get('name')}")
         sift.log_audit_event(
             'public_copy_saved',
             source_file_id=matched_file_id,
@@ -652,7 +636,7 @@ def copy_matched_image_to_public_folder(result_payload):
         
     except Exception as e:
         error_msg = f"Failed to copy to public folder: {e}"
-        print(f"[PUBLIC] ✗ {error_msg}")
+        _log(f"[PUBLIC] {error_msg}", force=True)
         sift.log_audit_event(
             'public_copy_error',
             source_file_id=matched_file_id,
