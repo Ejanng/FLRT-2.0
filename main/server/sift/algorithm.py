@@ -130,6 +130,11 @@ def get_drive_service():
             _DRIVE_SERVICE = build('drive', 'v3', credentials=service_account_creds)
             _log("Using Google Drive service account authentication", force=True)
             _log_authenticated_google_account(_DRIVE_SERVICE)
+            # Initialize required folders on first service account auth
+            try:
+                initialize_required_gdrive_folders(_DRIVE_SERVICE)
+            except Exception as e:
+                _log(f"⚠ Folder initialization failed (non-blocking): {e}", force=True)
             return _DRIVE_SERVICE
 
     creds = None
@@ -177,6 +182,11 @@ def get_drive_service():
     
     _DRIVE_SERVICE = build('drive', 'v3', credentials=creds)
     _log_authenticated_google_account(_DRIVE_SERVICE)
+    # Initialize required folders on first OAuth auth
+    try:
+        initialize_required_gdrive_folders(_DRIVE_SERVICE)
+    except Exception as e:
+        _log(f"⚠ Folder initialization failed (non-blocking): {e}", force=True)
     return _DRIVE_SERVICE
 
 
@@ -228,6 +238,116 @@ def _log_authenticated_google_account(service):
         _log(f"⚠️ Could not fetch authenticated Google account details: {e}", force=True)
     finally:
         _DRIVE_ACCOUNT_LOGGED = True
+
+
+def ensure_gdrive_folder_exists(service, folder_url_or_id, folder_name):
+    """
+    Check if a Google Drive folder exists by ID. If not found, attempt to create it.
+    
+    Args:
+        service: Google Drive API service
+        folder_url_or_id: Folder URL or folder ID
+        folder_name: Descriptive name for the folder (for creation if needed)
+    
+    Returns:
+        Folder ID if found/created, None if failed.
+    """
+    if not folder_url_or_id:
+        _log(f"✗ Folder check failed: No folder URL/ID provided for '{folder_name}'", force=True)
+        return None
+    
+    # Extract folder ID from URL if needed
+    folder_id = extract_folder_id(folder_url_or_id)
+    if not folder_id:
+        _log(f"✗ Could not extract folder ID from: {folder_url_or_id}", force=True)
+        return None
+    
+    try:
+        # Try to access the folder
+        file_metadata = service.files().get(
+            fileId=folder_id,
+            fields='id, name, mimeType'
+        ).execute()
+        
+        if file_metadata.get('mimeType') == 'application/vnd.google-apps.folder':
+            _log(f"✓ Folder exists: '{folder_name}' (ID: {folder_id})", force=True)
+            return folder_id
+        else:
+            _log(f"✗ Path is not a folder: '{folder_name}' (ID: {folder_id})", force=True)
+            return None
+    
+    except Exception as e:
+        # Folder not found - attempt to create it
+        _log(f"⚠ Folder not found: '{folder_name}' (ID: {folder_id}). Attempting to create...", force=True)
+        
+        try:
+            # Create the folder
+            folder_metadata = {
+                'name': folder_name,
+                'mimeType': 'application/vnd.google-apps.folder'
+            }
+            
+            created_folder = service.files().create(
+                body=folder_metadata,
+                fields='id, name, webViewLink'
+            ).execute()
+            
+            created_id = created_folder.get('id')
+            created_name = created_folder.get('name')
+            created_link = created_folder.get('webViewLink')
+            
+            _log(f"✓ Folder CREATED: '{created_name}' (ID: {created_id})", force=True)
+            _log(f"  View: {created_link}", force=True)
+            
+            return created_id
+        
+        except Exception as create_e:
+            _log(f"✗ Failed to create folder '{folder_name}': {create_e}", force=True)
+            return None
+
+
+def initialize_required_gdrive_folders(service):
+    """
+    Ensure all required Google Drive folders exist before any operations.
+    Called once on startup to validate/create folder structure.
+    
+    Returns:
+        Dict with folder status and IDs
+    """
+    from core.config import Config
+    
+    folders_config = [
+        (Config.LOST_REPORTS_GDRIVE_FOLDER_URL, "Lost Reports"),
+        (Config.FOUND_REPORTS_GDRIVE_FOLDER_URL, "Found Reports"),
+        (Config.MATCH_RESULTS_GDRIVE_FOLDER_URL, "Match Results"),
+        (Config.MANUAL_CLAIMS_GDRIVE_FOLDER_URL, "Manual Claims"),
+        (Config.PUBLIC_VIEW_GDRIVE_FOLDER_URL, "Public View"),
+        (Config.LOST_RETURNED_GDRIVE_FOLDER_URL, "Lost Returned"),
+        (Config.FOUND_RETURNED_GDRIVE_FOLDER_URL, "Found Returned"),
+    ]
+    
+    folder_status = {}
+    _log(f"\n{'='*70}", force=True)
+    _log(f"[INIT] Checking/creating required Google Drive folders", force=True)
+    _log(f"{'='*70}", force=True)
+    
+    for folder_url, folder_name in folders_config:
+        if not folder_url:
+            _log(f"⚠ Skipped '{folder_name}': No URL configured", force=True)
+            folder_status[folder_name] = {"status": "skipped", "folder_id": None}
+            continue
+        
+        folder_id = ensure_gdrive_folder_exists(service, folder_url, folder_name)
+        folder_status[folder_name] = {
+            "status": "ready" if folder_id else "failed",
+            "folder_id": folder_id,
+            "configured_url": folder_url
+        }
+    
+    _log(f"\n[INIT] Folder initialization complete", force=True)
+    _log(f"{'='*70}\n", force=True)
+    
+    return folder_status
 
 
 def extract_gdrive_file_id(url):
@@ -628,10 +748,26 @@ def build_database_from_url(image_url):
         print(f"Wrong Syntax: Error: {e}")
 
 
-def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True):
+def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, max_retries=3):
     """
-    Save OpenCV image array to Google Drive folder
+    Save OpenCV image array to Google Drive folder with retry logic and error handling.
+    
+    Args:
+        image_array: OpenCV image (numpy array)
+        filename: Desired filename
+        folder_id: Google Drive folder ID
+        add_timestamp: Whether to add timestamp to filename
+        max_retries: Max retry attempts for failed uploads
+    
+    Returns:
+        Dict with success status, file metadata, or error details
     """
+    if not folder_id:
+        return {
+            'success': False,
+            'error': 'No folder_id provided'
+        }
+    
     try:
         # Add timestamp to filename
         if add_timestamp:
@@ -642,44 +778,81 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True):
         if not filename.endswith(('.jpg', '.jpeg', '.png')):
             filename += '.jpg'
         
-        # Encode image
+        # Encode image to JPEG
         success, img_encoded = cv2.imencode('.jpg', image_array)
         if not success:
-            raise Exception("Failed to encode image")
+            raise Exception("Failed to encode image to JPEG")
+        
+        if len(img_encoded) == 0:
+            raise Exception("Image encoded to empty bytes")
         
         img_bytes = io.BytesIO(img_encoded.tobytes())
         
-        # Use saved credentials (same as training!)
-        service = get_drive_service()
+        # Authenticate with Google Drive (uses service account if available)
+        try:
+            service = get_drive_service()
+        except Exception as auth_e:
+            _log(f"AuthError: Failed to authenticate with Google Drive: {auth_e}", force=True)
+            return {
+                'success': False,
+                'error': f'Google Drive authentication failed: {auth_e}'
+            }
         
         file_metadata = {
             'name': filename,
             'parents': [folder_id]
         }
         
-        media = MediaIoBaseUpload(img_bytes, mimetype='image/jpeg', resumable=True)
+        # Retry loop for upload
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                img_bytes.seek(0)  # Reset stream position
+                media = MediaIoBaseUpload(img_bytes, mimetype='image/jpeg', resumable=True)
+                
+                file = service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields='id, name, webViewLink, mimeType, parents'
+                ).execute()
+                
+                if not file.get('id'):
+                    raise Exception("Upload returned no file ID")
+                
+                _log(f"✓ Uploaded: {file.get('name')} (ID: {file.get('id')}, attempt {attempt + 1}/{max_retries})", force=True)
+                
+                # Attempt to set proper permissions
+                try:
+                    service.permissions().create(
+                        fileId=file.get('id'),
+                        body={'type': 'user', 'role': 'reader', 'emailAddress': 'user@example.com'},
+                    ).execute()
+                except Exception:
+                    pass  # Permission setting is non-critical
+                
+                return {
+                    'success': True,
+                    'id': file.get('id'),
+                    'name': file.get('name'),
+                    'view_link': file.get('webViewLink'),
+                    'mime_type': file.get('mimeType'),
+                    'parent_folder_id': file.get('parents', [None])[0]
+                }
+                
+            except Exception as upload_e:
+                last_error = upload_e
+                _log(f"⚠ Upload attempt {attempt + 1}/{max_retries} failed: {upload_e}", force=True)
+                if attempt < max_retries - 1:
+                    time.sleep(1 * (attempt + 1))  # Exponential backoff
         
-        file = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id, name, webViewLink, mimeType'
-        ).execute()
-        
-        print(f"Success: Uploaded: {file.get('name')} (ID: {file.get('id')})")
-        
-        return {
-            'success': True,
-            'id': file.get('id'),
-            'name': file.get('name'),
-            'view_link': file.get('webViewLink'),
-            'mime_type': file.get('mimeType')
-        }
+        raise last_error or Exception("Upload failed after all retries")
         
     except Exception as e:
-        print(f"Wrong Syntax: Upload failed: {e}")
+        error_msg = f"Upload failed: {e}"
+        _log(f"✗ {error_msg}", force=True)
         return {
             'success': False,
-            'error': str(e)
+            'error': error_msg
         }
 
 
@@ -844,12 +1017,14 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         # Save to Google Drive if folder provided
         if output_gdrive_folder_id:
             try:
-                print(f"Saving matched result to Google Drive...")
+                _log(f"[MATCH] Saving matched result to Google Drive folder: {output_gdrive_folder_id}", force=True)
                 
                 upload_result = save_image_to_gdrive(
                     test_color, 
                     f"match_{best_entry['name']}.jpg", 
-                    output_gdrive_folder_id
+                    output_gdrive_folder_id,
+                    add_timestamp=True,
+                    max_retries=3
                 )
                 
                 if upload_result['success']:
@@ -857,18 +1032,21 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
                     result['gdrive_file_id'] = upload_result['id']
                     result['gdrive_view_link'] = upload_result['view_link']
                     
-                    # Also update query_image section
+                    # Also update query_image section  
                     result['query_image']['saved_to_gdrive'] = True
                     result['query_image']['gdrive_file_id'] = upload_result['id']
                     result['query_image']['gdrive_view_link'] = upload_result['view_link']
                     
-                    print(f"Success: Saved to Google Drive: {upload_result['name']}")
+                    _log(f"✓ Match result saved to Google Drive: {upload_result['name']}", force=True)
                 else:
-                    raise Exception(upload_result.get('error', 'Unknown upload error'))
+                    error_detail = upload_result.get('error', 'Unknown error')
+                    _log(f"✗ Failed to save match result to Drive: {error_detail}", force=True)
+                    result['error'] = f"Match found but GDrive save failed: {error_detail}"
                 
             except Exception as e:
-                print(f"Error: Failed to save to Google Drive: {e}")
-                result['error'] = f"Match found but GDrive save failed: {e}"
+                error_msg = f"Match found but GDrive save failed with exception: {e}"
+                _log(f"✗ {error_msg}", force=True)
+                result['error'] = error_msg
         
     else:
         reasons = []

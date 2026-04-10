@@ -18,6 +18,26 @@ LOST_DB_FILE = os.path.join(SIFT_DB_DIR, 'lost_reports_sift_database.pkl')
 FOUND_DB_FILE = os.path.join(SIFT_DB_DIR, 'found_reports_sift_database.pkl')
 _AUTO_BUILD_EMPTY_ATTEMPTS: set[str] = set()
 
+
+def _ensure_folder_ready(folder_url_or_id: Optional[str], folder_name: str) -> Optional[str]:
+    """
+    Ensure a Google Drive folder is ready (exists or create if missing).
+    Safe to call multiple times - subsequent calls will just verify it exists.
+    
+    Returns:
+        Folder ID if ready, None if failed
+    """
+    if not folder_url_or_id:
+        return None
+    
+    try:
+        service = sift.get_drive_service()
+        folder_id = sift.ensure_gdrive_folder_exists(service, folder_url_or_id, folder_name)
+        return folder_id
+    except Exception as e:
+        print(f"[FOLDER ERROR] Could not ensure folder ready '{folder_name}': {e}")
+        return None
+
 _DB_FILE_SWITCH_LOCK = threading.RLock()
 _SIFT_MAX_CONCURRENT_JOBS = max(1, int(os.getenv('SIFT_MAX_CONCURRENT_JOBS', '2')))
 _SIFT_JOB_WAIT_TIMEOUT_SECONDS = max(1, int(os.getenv('SIFT_JOB_WAIT_TIMEOUT_SECONDS', '25')))
@@ -280,60 +300,107 @@ def process_image_for_report(image_url, report_status):
     If the required target DB is missing/corrupt, auto-build it from the
     mapped Drive folder so image-based report submissions can still match.
     Saves match visualization to match-results Drive folder.
+    
+    Returns organized match results with proper error handling.
     """
-    print(f"\n[MATCH] Starting image matching for report")
+    print(f"\n{'='*60}")
+    print(f"[MATCH] Starting image matching workflow for report")
+    print(f"{'='*60}")
+    
     normalized_status = (report_status or '').strip().lower()
-    print(f"[MATCH] Report status (as submitted): {normalized_status}")
+    print(f"[MATCH] Report status submitted: {normalized_status}")
+    
+    if normalized_status not in ('lost', 'found'):
+        return {
+            "success": False,
+            "error": f"Invalid report status: {normalized_status}. Must be 'lost' or 'found'"
+        }
 
     target_status = 'lost' if normalized_status == 'found' else 'found'
     print(f"[MATCH] Will search against: {target_status.upper()} database")
-    print(f"[MATCH] Reason: If user found item (status={normalized_status}), search for matching lost items")
+    print(f"[MATCH] Logic: {normalized_status.upper()} report matches against {target_status.upper()} items")
 
     try:
         def _job():
             # Auto-build target DB only when missing/corrupt
-            database, db_file = _ensure_trained_database(target_status, auto_build=True)
+            try:
+                database, db_file = _ensure_trained_database(target_status, auto_build=True)
+            except Exception as db_e:
+                print(f"[MATCH ERROR] Database loading failed: {db_e}")
+                return {
+                    "success": False,
+                    "error": f"Database error: {db_e}"
+                }
+            
             if not database:
                 print(f"[MATCH ERROR] {target_status.upper()} database not available")
                 return {
                     "success": False,
-                    "error": f"No {target_status} database available for matching."
+                    "error": f"No {target_status} database available for matching. Admin needs to retrain."
                 }
 
-            print(f"[MATCH] Database ready ({len(database)} items). Starting matching process...")
-            output_folder_id = _extract_folder_id(Config.MATCH_RESULTS_GDRIVE_FOLDER_URL) or DEFAULT_GDRIVE_OUTPUT_FOLDER_ID
+            print(f"[MATCH] Database ready with {len(database)} items. Starting matching...")
+            
+            # Ensure match results folder exists (create if missing)
+            output_folder_id = _ensure_folder_ready(
+                Config.MATCH_RESULTS_GDRIVE_FOLDER_URL, 
+                "Match Results"
+            ) or DEFAULT_GDRIVE_OUTPUT_FOLDER_ID
+            print(f"[MATCH] Match results will be saved to folder: {output_folder_id}")
 
-            result = sift.detect_from_database(image_url, database, output_folder_id)
-            public_copy = {"success": False}
+            try:
+                result = sift.detect_from_database(image_url, database, output_folder_id)
+            except Exception as detect_e:
+                print(f"[MATCH ERROR] Detection failed: {detect_e}")
+                return {
+                    "success": False,
+                    "error": f"Matching failed: {detect_e}"
+                }
+            
+            # If match found, copy to public folder for sharing
+            public_copy = {"success": False, "error": "No match to share"}
             if result.get('success'):
+                print(f"[MATCH] ✓ Match found! Copying to public folder...")
                 public_copy = copy_matched_image_to_public_folder(result)
+            
             return result, public_copy, db_file
 
         result, public_copy, db_file = _run_sift_job(f'process_report_{target_status}', _job)
+        
     except RuntimeError as e:
+        error_msg = f"SIFT job error: {e}"
+        print(f"[MATCH ERROR] {error_msg}")
         return {
             "success": False,
-            "error": str(e)
+            "error": error_msg
+        }
+    except Exception as e:
+        error_msg = f"Unexpected error during matching: {e}"
+        print(f"[MATCH ERROR] {error_msg}")
+        return {
+            "success": False,
+            "error": error_msg
         }
 
+    # Build JSON response with all match details
     json_result = {
         "success": result.get('success', False),
         "target_status": target_status,
         "database_file": db_file,
         "query_image": {
-            "original_source": result['query_image']['original_source'],
-            "source_type": result['query_image']['source_type'],
-            "saved_to_gdrive": result['query_image']['saved_to_gdrive'],
-            "gdrive_file_id": result['query_image']['gdrive_file_id'],
-            "gdrive_view_link": result['query_image']['gdrive_view_link']
+            "original_source": result.get('query_image', {}).get('original_source', 'unknown'),
+            "source_type": result.get('query_image', {}).get('source_type', 'unknown'),
+            "saved_to_gdrive": result.get('query_image', {}).get('saved_to_gdrive', False),
+            "gdrive_file_id": result.get('query_image', {}).get('gdrive_file_id'),
+            "gdrive_view_link": result.get('query_image', {}).get('gdrive_view_link')
         },
         "matched_image": {
-            "name": result['matched_image']['name'],
+            "name": result.get('matched_image', {}).get('name'),
             "match_score": int(result.get('match_score', 0)),
-            "source_url": result['matched_image']['source_url'],
-            "source_type": result['matched_image']['source_type'],
-            "gdrive_file_id": result['matched_image']['gdrive_file_id'],
-            "gdrive_view_link": result['matched_image']['gdrive_view_link']
+            "source_url": result.get('matched_image', {}).get('source_url'),
+            "source_type": result.get('matched_image', {}).get('source_type', 'unknown'),
+            "gdrive_file_id": result.get('matched_image', {}).get('gdrive_file_id'),
+            "gdrive_view_link": result.get('matched_image', {}).get('gdrive_view_link')
         },
         "all_matches": [
             {
@@ -349,52 +416,147 @@ def process_image_for_report(image_url, report_status):
         "error": result.get('error')
     }
 
+    print(f"\n[MATCH RESULT SUMMARY]")
+    print(f"   Success: {json_result['success']}")
+    if json_result['success']:
+        print(f"   Match found: {json_result['matched_image'].get('name')}")
+        print(f"   Match score: {json_result['matched_image'].get('match_score')}")
+        print(f"   Public copy: {public_copy.get('success')}")
+    else:
+        print(f"   Error: {json_result['error']}")
+    print(f"{'='*60}\n")
+    
     return json_result
 
 
 def upload_report_image_by_status(image_source, report_status, filename_prefix="report_upload"):
-    """Upload report image to status-specific Drive folder."""
+    """
+    Upload report image to status-specific Drive folder with error handling.
+    Automatically creates folder if it doesn't exist.
+    
+    Args:
+        image_source: Path/URL/GDrive link to image
+        report_status: 'lost' or 'found'
+        filename_prefix: Prefix for uploaded filename
+        
+    Returns:
+        Dict with upload result and metadata
+    """
     normalized_status = (report_status or '').strip().lower()
-    folder_url = Config.LOST_REPORTS_GDRIVE_FOLDER_URL if normalized_status == 'lost' else Config.FOUND_REPORTS_GDRIVE_FOLDER_URL
-    folder_id = _extract_folder_id(folder_url)
+    if normalized_status not in ('lost', 'found'):
+        return {
+            "success": False,
+            "error": f"Invalid report status: {normalized_status}. Must be 'lost' or 'found'"
+        }
+    
+    # Select correct folder for status
+    folder_url = (
+        Config.LOST_REPORTS_GDRIVE_FOLDER_URL 
+        if normalized_status == 'lost' 
+        else Config.FOUND_REPORTS_GDRIVE_FOLDER_URL
+    )
+    folder_name = f"{normalized_status.upper()} Reports"
+    
+    # Ensure folder exists (create if missing)
+    folder_id = _ensure_folder_ready(folder_url, folder_name)
     if not folder_id:
         return {
             "success": False,
-            "error": f"Invalid folder mapping for status '{normalized_status}'"
+            "error": f"Could not access or create {folder_name} folder"
         }
-    return upload_image_to_gdrive(image_source, filename_prefix=filename_prefix, folder_id=folder_id)
+    
+    print(f"[UPLOAD] Uploading {normalized_status} report image to folder: {folder_id}")
+    
+    result = upload_image_to_gdrive(
+        image_source, 
+        filename_prefix=f"{normalized_status}_{filename_prefix}",
+        folder_id=folder_id,
+        max_retries=3
+    )
+    
+    if result.get('success'):
+        print(f"[UPLOAD] ✓ {normalized_status.upper()} report image uploaded: {result.get('name')}")
+    else:
+        print(f"[UPLOAD] ✗ Failed to upload {normalized_status} report: {result.get('error')}")
+    
+    return result
 
 
 def upload_manual_claim_image(image_source, filename_prefix="manual_claim"):
-    """Upload manual claim proof image to dedicated claims folder."""
-    folder_id = _extract_folder_id(Config.MANUAL_CLAIMS_GDRIVE_FOLDER_URL)
+    """
+    Upload manual claim proof image to dedicated claims folder with error handling.
+    Automatically creates folder if it doesn't exist.
+    
+    Args:
+        image_source: Path/URL/GDrive link to image
+        filename_prefix: Prefix for uploaded filename
+        
+    Returns:
+        Dict with upload result and metadata
+    """
+    folder_url = Config.MANUAL_CLAIMS_GDRIVE_FOLDER_URL
+    folder_name = "Manual Claims"
+    
+    # Ensure folder exists (create if missing)
+    folder_id = _ensure_folder_ready(folder_url, folder_name)
     if not folder_id:
         return {
             "success": False,
-            "error": "Invalid manual claims Drive folder"
+            "error": "Could not access or create Manual Claims folder"
         }
-    return upload_image_to_gdrive(image_source, filename_prefix=filename_prefix, folder_id=folder_id)
+    
+    print(f"[CLAIM] Uploading manual claim image to folder: {folder_id}")
+    
+    result = upload_image_to_gdrive(
+        image_source, 
+        filename_prefix=filename_prefix,
+        folder_id=folder_id,
+        max_retries=3
+    )
+    
+    if result.get('success'):
+        print(f"[CLAIM] ✓ Manual claim image uploaded: {result.get('name')}")
+    else:
+        print(f"[CLAIM] ✗ Failed to upload manual claim image: {result.get('error')}")
+    
+    return result
 
 
 def copy_matched_image_to_public_folder(result_payload):
-    """Copy matched database image to public-view folder for external viewing."""
+    """
+    Copy matched database image to public-view folder for external viewing.
+    Automatically creates folder if it doesn't exist.
+    
+    This enables sharing match results without exposing private folder structure.
+    """
     matched = (result_payload or {}).get('matched_image') or {}
     matched_file_id = matched.get('gdrive_file_id')
-    public_folder_id = _extract_folder_id(Config.PUBLIC_VIEW_GDRIVE_FOLDER_URL)
+    
+    # Ensure public folder exists (create if missing)
+    public_folder_id = _ensure_folder_ready(
+        Config.PUBLIC_VIEW_GDRIVE_FOLDER_URL,
+        "Public View"
+    )
 
     if not matched_file_id:
+        print("[PUBLIC] ✗ Cannot copy: matched image has no Google Drive file ID")
         return {
             "success": False,
             "error": "Matched image has no Google Drive file id"
         }
+    
     if not public_folder_id:
+        print("[PUBLIC] ✗ Cannot copy: invalid or inaccessible public-view folder")
         return {
             "success": False,
-            "error": "Invalid public-view Drive folder"
+            "error": "Could not access or create public-view Drive folder"
         }
 
     try:
         service = sift.get_drive_service()
+        
+        print(f"[PUBLIC] Copying matched image to public folder: {matched_file_id}")
+        
         copied_file = service.files().copy(
             fileId=matched_file_id,
             body={
@@ -403,55 +565,115 @@ def copy_matched_image_to_public_folder(result_payload):
             },
             fields='id, name, webViewLink',
         ).execute()
+        
+        if not copied_file.get('id'):
+            raise Exception("Copy operation returned no file ID")
 
+        # Attempt to set public read permissions
         try:
             service.permissions().create(
                 fileId=copied_file.get('id'),
                 body={'type': 'anyone', 'role': 'reader'},
             ).execute()
-        except Exception:
-            pass
+            print(f"[PUBLIC] ✓ Public permissions set for: {copied_file.get('name')}")
+        except Exception as perm_e:
+            print(f"[PUBLIC] ⚠ Warning: Could not set public permissions: {perm_e}")
+            # Non-critical - continue anyway
 
+        print(f"[PUBLIC] ✓ Image copied to public folder: {copied_file.get('name')}")
+        
         return {
             "success": True,
             "gdrive_file_id": copied_file.get('id'),
             "gdrive_view_link": copied_file.get('webViewLink'),
             "name": copied_file.get('name'),
         }
+        
     except Exception as e:
+        error_msg = f"Failed to copy to public folder: {e}"
+        print(f"[PUBLIC] ✗ {error_msg}")
         return {
             "success": False,
-            "error": str(e)
+            "error": error_msg
         }
 
 
-def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder_id=DEFAULT_GDRIVE_OUTPUT_FOLDER_ID):
-    """Upload image source (local path/url/gdrive link) to Google Drive and return upload metadata."""
-    try:
-        image_array, _ = sift.load_image_from_source(image_source)
-        upload_result = sift.save_image_to_gdrive(
-            image_array,
-            f"{filename_prefix}.jpg",
-            folder_id,
-            add_timestamp=True,
-        )
-        if not upload_result.get('success'):
-            return {
-                "success": False,
-                "error": upload_result.get('error', 'Unknown upload error')
-            }
-
-        return {
-            "success": True,
-            "gdrive_file_id": upload_result.get('id'),
-            "gdrive_view_link": upload_result.get('view_link'),
-            "name": upload_result.get('name'),
-        }
-    except Exception as e:
+def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder_id=DEFAULT_GDRIVE_OUTPUT_FOLDER_ID, max_retries=3):
+    """
+    Upload image source (local path/url/gdrive link) to Google Drive and return upload metadata.
+    
+    Args:
+        image_source: Path/URL/GDrive link to image
+        filename_prefix: Prefix for the uploaded filename
+        folder_id: Target Google Drive folder ID
+        max_retries: Number of retry attempts for failed uploads
+        
+    Returns:
+        Dict with success status and file metadata or error details
+    """
+    if not folder_id:
         return {
             "success": False,
-            "error": str(e)
+            "error": "Invalid folder ID provided for upload"
         }
+    
+    retry_count = 0
+    last_error = None
+    
+    while retry_count < max_retries:
+        try:
+            # Load and prepare image
+            try:
+                image_array, source_type = sift.load_image_from_source(image_source)
+            except Exception as load_e:
+                return {
+                    "success": False,
+                    "error": f"Failed to load image: {load_e}"
+                }
+            
+            # Upload to Google Drive
+            upload_result = sift.save_image_to_gdrive(
+                image_array,
+                f"{filename_prefix}.jpg",
+                folder_id,
+                add_timestamp=True,
+                max_retries=2
+            )
+            
+            if upload_result.get('success'):
+                return {
+                    "success": True,
+                    "gdrive_file_id": upload_result.get('id'),
+                    "gdrive_view_link": upload_result.get('view_link'),
+                    "name": upload_result.get('name'),
+                    "mime_type": upload_result.get('mime_type'),
+                    "source_type": source_type
+                }
+            else:
+                last_error = upload_result.get('error', 'Unknown upload error')
+                retry_count += 1
+                if retry_count < max_retries:
+                    import time
+                    time.sleep(1 * retry_count)  # Exponential backoff
+                    continue
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Upload failed after {max_retries} attempts: {last_error}"
+                    }
+        
+        except Exception as e:
+            last_error = str(e)
+            retry_count += 1
+            if retry_count < max_retries:
+                import time
+                time.sleep(1 * retry_count)
+                continue
+            else:
+                return {
+                    "success": False,
+                    "error": f"Upload exception after {max_retries} attempts: {last_error}"
+                }
 
 
 def _extract_gdrive_file_id(value: Optional[str]) -> Optional[str]:
