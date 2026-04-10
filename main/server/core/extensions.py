@@ -12,4 +12,10 @@ jwt = JWTManager()
 cors = CORS()
 session = Session()
 
-redis_client = redis.Redis(host=Config.SESSION_REDIS_HOST, port=Config.SESSION_REDIS_PORT, db=Config.SESSION_REDIS_DB)
+redis_client = redis.Redis(
+	host=Config.SESSION_REDIS_HOST,
+	port=Config.SESSION_REDIS_PORT,
+	db=Config.SESSION_REDIS_DB,
+	password=Config.SESSION_REDIS_PASSWORD,
+	ssl=Config.SESSION_REDIS_USE_SSL,
+)

@@ -1,9 +1,13 @@
 import os
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class Config:
+    REDIS_URL = os.getenv('REDIS_URL', '').strip()
+    _PARSED_REDIS_URL = urlparse(REDIS_URL) if REDIS_URL else None
+
     DB_USER = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")
     DB_HOST = os.getenv("DB_HOST")
@@ -22,10 +26,33 @@ class Config:
     SESSION_TYPE = os.getenv('SESSION_TYPE', 'redis')
     SESSION_PERMANENT = False
     SESSION_USE_SIGNER = True
-    SESSION_REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+    SESSION_REDIS_HOST = (
+        os.getenv('SESSION_REDIS_HOST')
+        or os.getenv('REDIS_HOST')
+        or (_PARSED_REDIS_URL.hostname if _PARSED_REDIS_URL else None)
+        or 'localhost'
+    )
 
-    SESSION_REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
-    SESSION_REDIS_DB = int(os.getenv('REDIS_DB', 0))
+    SESSION_REDIS_PORT = int(
+        os.getenv('SESSION_REDIS_PORT')
+        or os.getenv('REDIS_PORT')
+        or (_PARSED_REDIS_URL.port if _PARSED_REDIS_URL and _PARSED_REDIS_URL.port else 6379)
+    )
+
+    SESSION_REDIS_DB = int(
+        os.getenv('SESSION_REDIS_DB')
+        or os.getenv('REDIS_DB')
+        or (_PARSED_REDIS_URL.path.lstrip('/') if _PARSED_REDIS_URL and _PARSED_REDIS_URL.path else 0)
+    )
+
+    SESSION_REDIS_PASSWORD = (
+        os.getenv('SESSION_REDIS_PASSWORD')
+        or os.getenv('REDIS_PASSWORD')
+        or (_PARSED_REDIS_URL.password if _PARSED_REDIS_URL else None)
+    )
+    SESSION_REDIS_USE_SSL = (
+        (_PARSED_REDIS_URL.scheme == 'rediss') if _PARSED_REDIS_URL else False
+    )
 
     GDRIVE_URL = os.getenv('GDRIVE_URL')
 
