@@ -28,10 +28,13 @@ function RootComponent() {
     })
   }, [location.pathname, location.search, navigate])
 
+  // Hide header on admin routes
+  const isAdminRoute = location.pathname.startsWith('/admin')
+
   return (
     <ThemeProvider>
       <div className="min-h-screen grid-pattern transition-colors duration-300">
-        <Header />
+        {!isAdminRoute && <Header />}
         <main>
           <Outlet />
         </main>
