@@ -1,13 +1,14 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useLocation } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Menu, X, Home, FileText, Search, Shield, Info } from 'lucide-react'
 import { hasValidAdminSession } from '../utils/adminAuth'
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false)
+  const location = useLocation()
 
-  // Simple path detection without useRouter
-  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/'
+  // Get current path from React Router location
+  const currentPath = location.pathname
   
   const isActive = (path: string) => {
     if (path === '/') return currentPath === '/'
