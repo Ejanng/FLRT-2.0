@@ -58,31 +58,31 @@ class Config:
 
     LOST_REPORTS_GDRIVE_FOLDER_URL = os.getenv(
         'LOST_REPORTS_GDRIVE_FOLDER_URL',
-        'https://drive.google.com/drive/folders/1L67SDe_Tw0riFXWE_remlt0w0qfW-WGH?usp=drive_link'
+        'https://drive.google.com/drive/u/1/folders/1sKfBHo5KpZg5WmoK2QVIXV3THL1lD5qd'
     )
     FOUND_REPORTS_GDRIVE_FOLDER_URL = os.getenv(
         'FOUND_REPORTS_GDRIVE_FOLDER_URL',
-        'https://drive.google.com/drive/folders/1pHpBMkBgGkvjfUyUPTnKER2N9v8JBqdc?usp=drive_link'
+        'https://drive.google.com/drive/u/1/folders/1JfWCUIQJoRsQHCWHEgfyQFeChdxy9Hl6'
     )
     MATCH_RESULTS_GDRIVE_FOLDER_URL = os.getenv(
         'MATCH_RESULTS_GDRIVE_FOLDER_URL',
-        'https://drive.google.com/drive/folders/1qtyquqQntdIu9FU8nnu-cmWkL6Lt1oXm?usp=drive_link'
+        'https://drive.google.com/drive/u/1/folders/1g8ScQBr4t-mR9prZ3ZriylXyvxWxxqyb'
     )
     MANUAL_CLAIMS_GDRIVE_FOLDER_URL = os.getenv(
         'MANUAL_CLAIMS_GDRIVE_FOLDER_URL',
-        'https://drive.google.com/drive/folders/1h3OLwV8ALpz4lY5wP9HL-EKA4oTybiLm?usp=drive_link'
+        'https://drive.google.com/drive/u/1/folders/1YUxhvqXS-DcxUB-L9m7oE_KmPYQoZZbk'
     )
     PUBLIC_VIEW_GDRIVE_FOLDER_URL = os.getenv(
         'PUBLIC_VIEW_GDRIVE_FOLDER_URL',
-        'https://drive.google.com/drive/folders/1KF3zEkKAE5_XkMTDuYJIFbL69nYp-ayl?usp=drive_link'
+        'https://drive.google.com/drive/u/1/folders/1GueIJgzpX5PbpwlIsKVKTwhrUqCMqTD0'
     )
     LOST_RETURNED_GDRIVE_FOLDER_URL = os.getenv(
         'LOST_RETURNED_GDRIVE_FOLDER_URL',
-        'https://drive.google.com/drive/folders/12pRswMebNsjBkqhGjI2ij0zNXfiw9o9o?usp=drive_link'
+        'https://drive.google.com/drive/u/1/folders/1CdtVCj7gbHTZXcN0ZM1oUVReBqaLkDJW'
     )
     FOUND_RETURNED_GDRIVE_FOLDER_URL = os.getenv(
         'FOUND_RETURNED_GDRIVE_FOLDER_URL',
-        'https://drive.google.com/drive/folders/121Lh3QbwYRHcgKfIBLkTc4KUJsFnv_r8?usp=drive_link'
+        'https://drive.google.com/drive/u/1/folders/1sX2QZ2JMWGG8QouruN1O489sC529Eb_3'
     )
 
     DISCORD_SERVER_INVITE_URL = os.getenv(
