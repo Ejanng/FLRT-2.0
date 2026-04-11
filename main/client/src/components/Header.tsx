@@ -22,7 +22,6 @@ export default function Header() {
     { to: '/report', label: 'Report', icon: FileText },
     { to: '/claim', label: 'Find', icon: Search },
     { to: '/about', label: 'About', icon: Info },
-    { to: isAuthenticatedAdmin ? '/admin/dashboard' : '/admin', label: 'Admin', icon: Shield },
   ]
 
   return (
