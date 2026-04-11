@@ -35,24 +35,24 @@ export default function PersonalInfoModal({ isOpen, onClose, onSubmit, isLoading
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-[#1e1e2e] rounded-2xl max-w-md w-full p-6 shadow-2xl">
+      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">Additional Info</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <h3 className="text-xl font-bold text-gray-900">Info</h3>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-600">
             <X size={24} />
           </button>
         </div>
 
         {matchFound && (
           <div className="mb-4 bg-[#f5e102]/20 border border-[#f5e102] rounded-lg p-3 flex gap-3">
-            <CheckCircle className="text-[#0217f7] dark:text-[#f5e102] flex-shrink-0" size={20} />
-            <p className="text-sm text-gray-700 dark:text-gray-300">Match found! Provide contact details to proceed.</p>
+            <CheckCircle className="text-[#0217f7] flex-shrink-0" size={20} />
+            <p className="text-sm text-gray-800">Match found! Provide contact details to proceed.</p>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
               Name <span className="text-red-500">*</span>
             </label>
             <input
@@ -66,7 +66,7 @@ export default function PersonalInfoModal({ isOpen, onClose, onSubmit, isLoading
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
               Student Number <span className="text-red-500">*</span>
             </label>
             <input
@@ -80,7 +80,7 @@ export default function PersonalInfoModal({ isOpen, onClose, onSubmit, isLoading
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
               Contact <span className="text-red-500">*</span>
             </label>
             <input
@@ -94,7 +94,7 @@ export default function PersonalInfoModal({ isOpen, onClose, onSubmit, isLoading
           </div>
 
           <div className="flex gap-3 pt-4">
-            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
               Cancel
             </button>
             <button type="submit" disabled={isLoading} className="flex-1 btn-primary">

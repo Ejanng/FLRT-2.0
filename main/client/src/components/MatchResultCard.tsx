@@ -42,7 +42,7 @@ export default function MatchResultCard({ match }: { match: MatchResult }) {
         />
       )}
 
-      <p className="text-gray-700 dark:text-gray-300 text-sm mb-2">
+      <p className="text-gray-700 text-sm mb-2">
         <span className="font-semibold">Item:</span> {match.name}
       </p>
       <div className="flex flex-wrap items-center gap-3">
@@ -51,7 +51,7 @@ export default function MatchResultCard({ match }: { match: MatchResult }) {
             href={match.gdrive_view_link}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[#0217f7] dark:text-[#f5e102] text-sm font-medium hover:underline"
+            className="inline-flex items-center gap-1 text-[#0217f7] text-sm font-medium hover:underline"
           >
             View Matched Image <ExternalLink size={14} />
           </a>

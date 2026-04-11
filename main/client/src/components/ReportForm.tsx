@@ -218,9 +218,9 @@ export default function ReportForm({ initialData }: ReportFormProps) {
     <div className="glass-card rounded-3xl p-6 sm:p-8 lg:p-10">
       {submitMessage && (
         <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
-          submitStatus === 'success' 
-            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200' 
-            : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200'
+          submitStatus === 'success'
+            ? 'bg-green-100 text-green-700 border border-green-200' 
+            : 'bg-red-100 text-red-700 border border-red-200'
         }`}>
           {submitStatus === 'success' ? <Sparkles size={20} /> : <X size={20} />}
           {submitMessage}
@@ -231,8 +231,8 @@ export default function ReportForm({ initialData }: ReportFormProps) {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-            <FileText size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+            <FileText size={18} className="text-[#0217f7]" />
             Item Name <span className="text-red-500">*</span>
           </label>
           <input
@@ -247,8 +247,8 @@ export default function ReportForm({ initialData }: ReportFormProps) {
         </div>
 
         <div>
-          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-            <FileText size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+            <FileText size={18} className="text-[#0217f7]" />
             Description <span className="text-red-500">*</span>
           </label>
           <textarea
@@ -262,7 +262,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
             className="input-field resize-none"
           />
           <div className="mt-2 flex items-center gap-2">
-            <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
               <div className="h-full bg-gradient-to-r from-[#0217f7] to-[#f5e102] transition-all" style={{ width: `${progress}%` }} />
             </div>
             <span className="text-xs text-gray-500">{charCount}/{MAX_CHARS}</span>
@@ -271,8 +271,8 @@ export default function ReportForm({ initialData }: ReportFormProps) {
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-              <Sparkles size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+              <Sparkles size={18} className="text-[#0217f7]" />
               Status <span className="text-red-500">*</span>
             </label>
             <select
@@ -280,7 +280,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
               value={formData.status}
               onChange={handleInputChange}
               required
-              className="input-field appearance-none bg-white dark:bg-[#1e1e2e]"
+              className="input-field appearance-none bg-white"
             >
               <option value="">Select status</option>
               <option value="lost">Lost</option>
@@ -289,8 +289,8 @@ export default function ReportForm({ initialData }: ReportFormProps) {
           </div>
 
           <div>
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-              <MapPin size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+              <MapPin size={18} className="text-[#0217f7]" />
               Location <span className="text-red-500">*</span>
             </label>
             <input
@@ -307,8 +307,8 @@ export default function ReportForm({ initialData }: ReportFormProps) {
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-              <Calendar size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+              <Calendar size={18} className="text-[#0217f7]" />
               Date <span className="text-red-500">*</span>
             </label>
             <input
@@ -322,9 +322,9 @@ export default function ReportForm({ initialData }: ReportFormProps) {
           </div>
 
           <div>
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-              <Calendar size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
-              Time <span className="text-gray-400 text-xs">(Optional)</span>
+            <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+              <Calendar size={18} className="text-[#0217f7]" />
+              Time <span className="text-gray-600 text-xs">(Optional)</span>
             </label>
             <input
               type="time"
@@ -337,14 +337,14 @@ export default function ReportForm({ initialData }: ReportFormProps) {
         </div>
 
         <div>
-          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-            <Camera size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
-            Photo <span className="text-gray-400 text-xs">(Optional)</span>
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+            <Camera size={18} className="text-[#0217f7]" />
+            Photo <span className="text-gray-600 text-xs">(Optional)</span>
           </label>
           <div
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
-            className="relative border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-[#0217f7] dark:hover:border-[#f5e102] transition-all cursor-pointer group"
+            className="relative border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-[#0217f7] transition-all cursor-pointer group"
           >
             {photoPreview ? (
               <div className="relative inline-block">
@@ -366,10 +366,10 @@ export default function ReportForm({ initialData }: ReportFormProps) {
                 <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#0217f7] to-[#010bb3] flex items-center justify-center">
                   <Upload size={28} className="text-[#f5e102]" />
                 </div>
-                <p className="text-gray-700 dark:text-gray-300">
-                  <span className="text-[#0217f7] dark:text-[#f5e102] font-semibold">Click to upload</span> or drag and drop
+                <p className="text-gray-700">
+                  <span className="text-[#0217f7] font-semibold">Click to upload</span> or drag and drop
                 </p>
-                <p className="text-xs text-gray-400">JPEG, PNG (Max 5MB)</p>
+                <p className="text-xs text-gray-600">JPEG, PNG (Max 5MB)</p>
               </div>
             )}
             <input

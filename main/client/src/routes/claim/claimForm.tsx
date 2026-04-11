@@ -129,27 +129,27 @@ function ClaimFormPage() {
       <div className="max-w-2xl mx-auto">
         <button 
           onClick={() => navigate({ to: '/claim' })} 
-          className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-[#0217f7] mb-6 transition-colors"
+          className="flex items-center gap-2 text-gray-600 hover:text-[#0217f7] mb-6 transition-colors"
         >
           <ArrowLeft size={20} /> Back to Items
         </button>
 
         <div className="bg-[#f5e102]/10 border-2 border-[#f5e102] rounded-xl p-4 mb-6">
-          <h2 className="text-sm font-semibold text-[#0217f7] dark:text-[#f5e102] mb-2">
+          <h2 className="text-sm font-semibold text-[#0217f7] mb-2">
             {isFoundFlow ? 'Found Item:' : 'Claiming:'} {name}
           </h2>
-          <div className="grid grid-cols-2 gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <div><span className="text-gray-500">Location:</span> {location}</div>
-            <div><span className="text-gray-500">Date:</span> {new Date(date).toLocaleDateString()}</div>
-            <div><span className="text-gray-500">Category:</span> {category}</div>
+          <div className="grid grid-cols-2 gap-2 text-sm text-gray-800">
+            <div><span className="text-gray-600">Location:</span> {location}</div>
+            <div><span className="text-gray-600">Date:</span> {new Date(date).toLocaleDateString()}</div>
+            <div><span className="text-gray-600">Category:</span> {category}</div>
           </div>
         </div>
 
         <div className="glass-card rounded-3xl p-6 sm:p-8">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
             {isFoundFlow ? 'I Found This Item' : 'Submit Claim'}
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mb-6">
+          <p className="text-gray-500 mb-6">
             {isFoundFlow
               ? 'Share your personal details so admins can contact you and coordinate the return with the owner.'
               : 'Provide your details and proof of ownership to claim this item.'}
@@ -157,8 +157,8 @@ function ClaimFormPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                <User size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                <User size={18} className="text-[#0217f7]" />
                 Your Name <span className="text-red-500">*</span>
               </label>
               <input 
@@ -172,8 +172,8 @@ function ClaimFormPage() {
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                <IdCard size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                <IdCard size={18} className="text-[#0217f7]" />
                 Student Number <span className="text-red-500">*</span>
               </label>
               <input 
@@ -187,8 +187,8 @@ function ClaimFormPage() {
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                <Mail size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                <Mail size={18} className="text-[#0217f7]" />
                 Contacts <span className="text-red-500">*</span>
               </label>
               <input 
@@ -202,8 +202,8 @@ function ClaimFormPage() {
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                <FileText size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                <FileText size={18} className="text-[#0217f7]" />
                 {isFoundFlow ? 'Item/Find Details' : 'Proof of Ownership'} <span className="text-red-500">*</span>
               </label>
               <textarea 
@@ -219,12 +219,12 @@ function ClaimFormPage() {
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                <Upload size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                <Upload size={18} className="text-[#0217f7]" />
                 {isFoundFlow ? 'Upload Item Photo' : 'Upload Proof Photo'} <span className="text-red-500">*</span>
               </label>
               <div className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${
-                errors.photo ? 'border-red-500 bg-red-50' : 'border-gray-300 dark:border-gray-600 hover:border-[#0217f7] dark:hover:border-[#f5e102]'
+                errors.photo ? 'border-red-500 bg-red-50' : 'border-gray-300 hover:border-[#0217f7]'
               }`}>
                 {photoPreview ? (
                   <div className="relative inline-block">
@@ -242,10 +242,10 @@ function ClaimFormPage() {
                     <div className="w-12 h-12 mx-auto rounded-xl bg-gradient-to-br from-[#0217f7] to-[#010bb3] flex items-center justify-center">
                       <Upload size={24} className="text-[#f5e102]" />
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <p className="text-sm text-gray-600">
                       {isFoundFlow ? 'Click to upload item photo' : 'Click to upload proof image'}
                     </p>
-                    <p className="text-xs text-gray-400">JPG, PNG (Max 5MB)</p>
+                    <p className="text-xs text-gray-600">JPG, PNG (Max 5MB)</p>
                   </div>
                 )}
                 <input 

@@ -5,13 +5,11 @@
   --color-primary-dark: #010bb3;
   --color-accent: #f5e102;
   --color-accent-dark: #dcc702;
-  --color-dark-bg: #0a0a0f;
-  --color-dark-surface: #12121a;
 }
 
 @layer base {
   * {
-    border-color: var(--color-gray-200, #e5e7eb);
+    border-color: #e5e7eb;
   }
   
   html {
@@ -27,11 +25,6 @@
     transition: background 0.3s ease, color 0.3s ease;
   }
   
-  .dark body {
-    color: #f1f5f9;
-    background: linear-gradient(135deg, #0a0a0f 0%, #12121a 50%, #1a1a2e 100%);
-  }
-  
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -45,24 +38,14 @@
     background: #0217f7;
     border-radius: 4px;
   }
-  
-  .dark ::-webkit-scrollbar-thumb {
-    background: #f5e102;
-  }
 }
 
 @layer components {
   .glass-card {
-    background: rgba(255, 255, 255, 0.88);
+    background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(20px);
-    border: 1px solid rgba(2, 23, 247, 0.12);
-    box-shadow: 0 8px 32px rgba(2, 23, 247, 0.12);
-  }
-  
-  .dark .glass-card {
-    background: rgba(18, 18, 26, 0.8);
-    border: 1px solid rgba(245, 225, 2, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(2, 23, 247, 0.15);
+    box-shadow: 0 8px 32px rgba(2, 23, 247, 0.1);
   }
   
   .btn-primary {
@@ -96,17 +79,6 @@
     transform: translateY(-3px);
   }
   
-  .dark .btn-secondary {
-    color: #f5e102;
-    border-color: #f5e102;
-    background: transparent;
-  }
-  
-  .dark .btn-secondary:hover {
-    background: #f5e102;
-    color: #0a0a0f;
-  }
-  
   .input-field {
     width: 100%;
     padding: 0.875rem 1rem;
@@ -122,12 +94,6 @@
     color: #6b7280;
   }
   
-  .dark .input-field {
-    background: rgba(18, 18, 26, 0.8);
-    border-color: #2e2e3e;
-    color: #f1f5f9;
-  }
-  
   .input-field:focus {
     outline: none;
     border-color: #0217f7;
@@ -135,9 +101,9 @@
   }
   
   .card {
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.95);
     border-radius: 1.25rem;
-    border: 1px solid rgba(2, 23, 247, 0.1);
+    border: 1px solid rgba(2, 23, 247, 0.12);
     padding: 1.5rem;
     box-shadow: 0 4px 20px rgba(2, 23, 247, 0.08);
     transition: all 0.4s ease;
@@ -147,11 +113,6 @@
     transform: translateY(-8px);
     box-shadow: 0 20px 40px rgba(2, 23, 247, 0.15);
     border-color: rgba(2, 23, 247, 0.2);
-  }
-  
-  .dark .card {
-    background: rgba(18, 18, 26, 0.9);
-    border-color: rgba(245, 225, 2, 0.1);
   }
   
   .badge-lost {
@@ -188,23 +149,10 @@
     background-clip: text;
   }
   
-  .dark .text-gradient {
-    background: linear-gradient(135deg, #f5e102 0%, #fff 50%, #0217f7 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  
   .grid-pattern {
     background-image: 
       linear-gradient(rgba(2, 23, 247, 0.03) 1px, transparent 1px),
       linear-gradient(90deg, rgba(2, 23, 247, 0.03) 1px, transparent 1px);
     background-size: 50px 50px;
-  }
-  
-  .dark .grid-pattern {
-    background-image: 
-      linear-gradient(rgba(245, 225, 2, 0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(245, 225, 2, 0.05) 1px, transparent 1px);
   }
 }

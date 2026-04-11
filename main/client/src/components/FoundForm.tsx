@@ -90,37 +90,37 @@ export default function FoundForm({ reportId, itemName, location, date, category
       <div className="max-w-2xl mx-auto">
         <button
           onClick={() => navigate({ to: '/claim' })}
-          className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-[#0217f7] mb-6 transition-colors"
+          className="flex items-center gap-2 text-gray-700 hover:text-[#0217f7] mb-6 transition-colors"
         >
           <ArrowLeft size={20} /> Back to Items
         </button>
 
         <div className="bg-[#f5e102]/10 border-2 border-[#f5e102] rounded-xl p-4 mb-6">
-          <h2 className="text-sm font-semibold text-[#0217f7] dark:text-[#f5e102] mb-2">Found Item: {itemName}</h2>
-          <div className="grid grid-cols-2 gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <div><span className="text-gray-500">Location:</span> {location}</div>
-            <div><span className="text-gray-500">Date:</span> {new Date(date).toLocaleDateString()}</div>
-            <div><span className="text-gray-500">Category:</span> {category || 'Uncategorized'}</div>
-            <div><span className="text-gray-500">Report ID:</span> #{reportId}</div>
+          <h2 className="text-sm font-semibold text-[#0217f7] mb-2">Found Item: {itemName}</h2>
+          <div className="grid grid-cols-2 gap-2 text-sm text-gray-800">
+            <div><span className="text-gray-600">Location:</span> {location}</div>
+            <div><span className="text-gray-600">Date:</span> {new Date(date).toLocaleDateString()}</div>
+            <div><span className="text-gray-600">Category:</span> {category || 'Uncategorized'}</div>
+            <div><span className="text-gray-600">Report ID:</span> #{reportId}</div>
           </div>
         </div>
 
         <div className="glass-card rounded-3xl p-6 sm:p-8">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">I Found This Item</h1>
-          <p className="text-gray-500 dark:text-gray-400 mb-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">I Found This Item</h1>
+          <p className="text-gray-600 mb-6">
             Share your personal details so admins can contact you and coordinate the return with the owner.
           </p>
 
           {errors.report && (
-            <div className="mb-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
+            <div className="mb-4 p-3 rounded-lg bg-red-100 text-red-700">
               {errors.report}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                <User size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+                <User size={18} className="text-[#0217f7]" />
                 Your Name <span className="text-red-500">*</span>
               </label>
               <input
@@ -134,8 +134,8 @@ export default function FoundForm({ reportId, itemName, location, date, category
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                <IdCard size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+                <IdCard size={18} className="text-[#0217f7]" />
                 Student Number <span className="text-red-500">*</span>
               </label>
               <input
@@ -149,8 +149,8 @@ export default function FoundForm({ reportId, itemName, location, date, category
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                <Mail size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+                <Mail size={18} className="text-[#0217f7]" />
                 Contact (Email or Phone) <span className="text-red-500">*</span>
               </label>
               <input
@@ -164,8 +164,8 @@ export default function FoundForm({ reportId, itemName, location, date, category
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                <FileText size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+                <FileText size={18} className="text-[#0217f7]" />
                 Item/Find Details <span className="text-red-500">*</span>
               </label>
               <textarea
@@ -179,11 +179,11 @@ export default function FoundForm({ reportId, itemName, location, date, category
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                <Upload size={18} className="text-[#0217f7] dark:text-[#f5e102]" />
-                Upload Item Photo <span className="text-gray-400 text-xs">(Optional)</span>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+                <Upload size={18} className="text-[#0217f7]" />
+                Upload Item Photo <span className="text-gray-500 text-xs">(Optional)</span>
               </label>
-              <div className="relative border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer border-gray-300 dark:border-gray-600 hover:border-[#0217f7] dark:hover:border-[#f5e102]">
+              <div className="relative border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer border-gray-300 hover:border-[#0217f7]">
                 {photoPreview ? (
                   <div className="relative inline-block">
                     <img src={photoPreview} alt="Item" className="max-h-48 rounded-xl" />
@@ -203,8 +203,8 @@ export default function FoundForm({ reportId, itemName, location, date, category
                     <div className="w-12 h-12 mx-auto rounded-xl bg-gradient-to-br from-[#0217f7] to-[#010bb3] flex items-center justify-center">
                       <Upload size={24} className="text-[#f5e102]" />
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Click to upload item photo</p>
-                    <p className="text-xs text-gray-400">JPG, PNG (Max 5MB)</p>
+                    <p className="text-sm text-gray-700">Click to upload item photo</p>
+                    <p className="text-xs text-gray-500">JPG, PNG (Max 5MB)</p>
                   </div>
                 )}
                 <input

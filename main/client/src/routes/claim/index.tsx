@@ -59,16 +59,16 @@ function ClaimantPage() {
     <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-2">
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
             Browse <span className="text-gradient">Items</span>
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">Find and claim your lost items</p>
+          <p className="text-gray-700">Find and claim your lost items</p>
         </div>
 
         <div className="glass-card rounded-2xl p-4 mb-6">
           <div className="grid sm:grid-cols-4 gap-4">
             <div className="relative sm:col-span-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={18} />
               <input
                 type="text"
                 placeholder="Search items..."
@@ -111,11 +111,11 @@ function ClaimantPage() {
         </div>
 
         <div className="flex justify-between items-center mb-4">
-          <span className="text-gray-600 dark:text-gray-400">{filtered.length} items found</span>
+          <span className="text-gray-700">{filtered.length} items found</span>
           <button
             onClick={() => queryClient.invalidateQueries({ queryKey: ['claimable-reports'] })}
             disabled={isLoading}
-            className="flex items-center gap-2 px-4 py-2 text-[#0217f7] dark:text-[#f5e102] border border-[#0217f7] dark:border-[#f5e102] rounded-lg hover:bg-[#0217f7] hover:text-white dark:hover:bg-[#f5e102] dark:hover:text-[#0217f7] transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 text-[#0217f7] border border-[#0217f7] rounded-lg hover:bg-[#0217f7] hover:text-white transition-all disabled:opacity-50"
           >
             <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
             Refresh
@@ -123,17 +123,17 @@ function ClaimantPage() {
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-xl text-center">
+          <div className="mb-6 p-4 bg-red-100 text-red-700 rounded-xl text-center">
             Failed to load items. Please try again.
           </div>
         )}
 
         {isLoading ? (
           <div className="flex justify-center py-12">
-            <Loader2 size={48} className="animate-spin text-[#0217f7] dark:text-[#f5e102]" />
+            <Loader2 size={48} className="animate-spin text-[#0217f7]" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+          <div className="text-center py-12 text-gray-600">
             No items found. Check back later!
           </div>
         ) : (
@@ -154,19 +154,19 @@ function ClaimantPage() {
                       {item.status}
                     </span>
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1 line-clamp-1">{item.item_name}</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">{item.description}</p>
-                  <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400 mb-4">
+                  <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-1">{item.item_name}</h3>
+                  <p className="text-sm text-gray-700 mb-3 line-clamp-2">{item.description}</p>
+                  <div className="space-y-1 text-xs text-gray-600 mb-4">
                     <div className="flex items-center gap-2">
-                      <MapPin size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
+                      <MapPin size={14} className="text-[#0217f7]" /> 
                       {item.location}
                     </div>
                     <div className="flex items-center gap-2">
-                      <Calendar size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
+                      <Calendar size={14} className="text-[#0217f7]" /> 
                       {new Date(item.date_reported).toLocaleDateString()}
                     </div>
                     <div className="flex items-center gap-2">
-                      <Tag size={14} className="text-[#0217f7] dark:text-[#f5e102]" /> 
+                      <Tag size={14} className="text-[#0217f7]" /> 
                       {item.category || 'Uncategorized'}
                     </div>
                   </div>
@@ -207,24 +207,24 @@ function ClaimantPage() {
             </div>
 
             <div className="flex items-center justify-between mt-6">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-600">
                 Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, filtered.length)} of {filtered.length} items
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                   disabled={currentPageSafe === 1}
-                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Previous
                 </button>
-                <span className="text-sm text-gray-600 dark:text-gray-300">
+                <span className="text-sm text-gray-700">
                   Page {currentPageSafe} of {totalPages}
                 </span>
                 <button
                   onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                   disabled={currentPageSafe === totalPages}
-                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
                 </button>

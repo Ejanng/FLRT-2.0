@@ -43,21 +43,21 @@ function AdminLogin() {
           <div className="w-16 h-16 mx-auto bg-gradient-to-br from-[#0217f7] to-[#010bb3] rounded-2xl flex items-center justify-center mb-4">
             <Shield className="text-white" size={32} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Login</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">FLRT Management System</p>
+          <h1 className="text-2xl font-bold text-gray-900">Admin Login</h1>
+          <p className="text-gray-600 text-sm">FLRT Management System</p>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Email</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={18} />
               <input
                 type="email"
                 value={form.email}
@@ -70,9 +70,9 @@ function AdminLogin() {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Password</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={18} />
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={form.password}
@@ -84,7 +84,7 @@ function AdminLogin() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-600"
               >
                 <Eye size={18} />
               </button>

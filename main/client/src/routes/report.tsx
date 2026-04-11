@@ -28,10 +28,10 @@ function ReportPage() {
     <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-2">
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
             Report an <span className="text-gradient">Item</span>
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-700">
             {isFoundItemFlow
               ? 'Thanks for finding this item. Submit the form with your contact info so admins can coordinate with the owner.'
               : 'Help us reunite lost items with their owners'}
