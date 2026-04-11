@@ -50,7 +50,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # ===============================
-# IDE / OS
+# IDE / OS / root files
 # ===============================
 
 # VS Code
@@ -58,6 +58,8 @@ yarn-error.log*
 
 # macOS
 .DS_Store
+
+error.txt
 
 # Windows
 Thumbs.db
