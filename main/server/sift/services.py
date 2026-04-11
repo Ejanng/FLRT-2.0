@@ -9,9 +9,6 @@ from contextlib import contextmanager
 from typing import Optional, Iterable, Set
 from core.config import Config
 
-
-DEFAULT_GDRIVE_OUTPUT_FOLDER_ID = "1qtyquqQntdIu9FU8nnu-cmWkL6Lt1oXm"
-
 SIFT_DB_DIR = os.path.join(os.path.dirname(sift.DB_FILE), 'databases')
 os.makedirs(SIFT_DB_DIR, exist_ok=True)
 
@@ -22,8 +19,8 @@ _AUTO_BUILD_EMPTY_ATTEMPTS: set[str] = set()
 
 def _ensure_folder_ready(folder_url_or_id: Optional[str], folder_name: str) -> Optional[str]:
     """
-    Ensure a Google Drive folder is ready (exists or create if missing).
-    Safe to call multiple times - subsequent calls will just verify it exists.
+    Ensure a Google Drive folder is ready by validating accessibility.
+    Safe to call multiple times.
     
     Returns:
         Folder ID if ready, None if failed
@@ -229,7 +226,16 @@ def retrain_model_for_status(report_status: str):
     return _run_sift_job(f'retrain_{normalized_status}', _job)
 
 def process_image(image_url):
-    GDRIVE_FOLDER_ID = DEFAULT_GDRIVE_OUTPUT_FOLDER_ID
+    output_folder_id = _ensure_folder_ready(
+        Config.MATCH_RESULTS_GDRIVE_FOLDER_URL,
+        'Match Results',
+    )
+
+    if not output_folder_id:
+        return {
+            "success": False,
+            "error": "Could not access Match Results folder from configuration",
+        }
 
     def _job():
         database = sift.load_database()
@@ -237,7 +243,7 @@ def process_image(image_url):
         if not database:
             return {"error": "Database not found. Please train the model first."}
 
-        return sift.detect_from_database(image_url, database, GDRIVE_FOLDER_ID)
+        return sift.detect_from_database(image_url, database, output_folder_id)
 
     try:
         result = _run_sift_job('process_image', _job)
@@ -341,11 +347,16 @@ def process_image_for_report(image_url, report_status):
 
             _log(f"[MATCH] database ready with {len(database)} items")
             
-            # Ensure match results folder exists (create if missing)
+            # Validate configured match-results folder access.
             output_folder_id = _ensure_folder_ready(
                 Config.MATCH_RESULTS_GDRIVE_FOLDER_URL, 
                 "Match Results"
-            ) or DEFAULT_GDRIVE_OUTPUT_FOLDER_ID
+            )
+            if not output_folder_id:
+                return {
+                    "success": False,
+                    "error": "Could not access Match Results folder from configuration"
+                }
             _log(f"[MATCH] result folder={output_folder_id}")
 
             try:
@@ -428,7 +439,6 @@ def process_image_for_report(image_url, report_status):
 def upload_report_image_by_status(image_source, report_status, filename_prefix="report_upload"):
     """
     Upload report image to status-specific Drive folder with error handling.
-    Automatically creates folder if it doesn't exist.
     
     Args:
         image_source: Path/URL/GDrive link to image
@@ -458,7 +468,7 @@ def upload_report_image_by_status(image_source, report_status, filename_prefix="
     )
     folder_name = f"{normalized_status.upper()} Reports"
     
-    # Ensure folder exists (create if missing)
+    # Validate configured folder access.
     folder_id = _ensure_folder_ready(folder_url, folder_name)
     if not folder_id:
         sift.log_audit_event(
@@ -469,7 +479,7 @@ def upload_report_image_by_status(image_source, report_status, filename_prefix="
         )
         return {
             "success": False,
-            "error": f"Could not access or create {folder_name} folder"
+            "error": f"Could not access {folder_name} folder"
         }
     
     _log(f"[UPLOAD] status={normalized_status} folder={folder_id}")
@@ -505,7 +515,6 @@ def upload_report_image_by_status(image_source, report_status, filename_prefix="
 def upload_manual_claim_image(image_source, filename_prefix="manual_claim"):
     """
     Upload manual claim proof image to dedicated claims folder with error handling.
-    Automatically creates folder if it doesn't exist.
     
     Args:
         image_source: Path/URL/GDrive link to image
@@ -517,7 +526,7 @@ def upload_manual_claim_image(image_source, filename_prefix="manual_claim"):
     folder_url = Config.MANUAL_CLAIMS_GDRIVE_FOLDER_URL
     folder_name = "Manual Claims"
     
-    # Ensure folder exists (create if missing)
+    # Validate configured folder access.
     folder_id = _ensure_folder_ready(folder_url, folder_name)
     if not folder_id:
         sift.log_audit_event(
@@ -527,7 +536,7 @@ def upload_manual_claim_image(image_source, filename_prefix="manual_claim"):
         )
         return {
             "success": False,
-            "error": "Could not access or create Manual Claims folder"
+            "error": "Could not access Manual Claims folder"
         }
     
     _log(f"[CLAIM] upload folder={folder_id}")
@@ -561,14 +570,13 @@ def upload_manual_claim_image(image_source, filename_prefix="manual_claim"):
 def copy_matched_image_to_public_folder(result_payload):
     """
     Copy matched database image to public-view folder for external viewing.
-    Automatically creates folder if it doesn't exist.
     
     This enables sharing match results without exposing private folder structure.
     """
     matched = (result_payload or {}).get('matched_image') or {}
     matched_file_id = matched.get('gdrive_file_id')
     
-    # Ensure public folder exists (create if missing)
+    # Validate configured public-view folder access.
     public_folder_id = _ensure_folder_ready(
         Config.PUBLIC_VIEW_GDRIVE_FOLDER_URL,
         "Public View"
@@ -587,7 +595,7 @@ def copy_matched_image_to_public_folder(result_payload):
         sift.log_audit_event('public_copy_error', error='folder_unavailable')
         return {
             "success": False,
-            "error": "Could not access or create public-view Drive folder"
+            "error": "Could not access public-view Drive folder"
         }
 
     try:
@@ -651,7 +659,7 @@ def copy_matched_image_to_public_folder(result_payload):
         }
 
 
-def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder_id=DEFAULT_GDRIVE_OUTPUT_FOLDER_ID, max_retries=3):
+def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder_id=None, max_retries=3):
     """
     Upload image source (local path/url/gdrive link) to Google Drive and return upload metadata.
     
