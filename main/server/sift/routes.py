@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from sift.services import train_model, process_image, retrain_model_for_status
+from sift.services import train_model, process_image, retrain_model_for_status, get_drive_health_status
 from core.config import Config
 from core.notifications import test_discord_webhooks
 from auth.decorators import auth_required, admin_required
@@ -63,4 +63,13 @@ def test_webhooks(current_user):
         'message': 'Discord webhook test completed',
         'results': results,
     }), status_code
+
+
+@sift_bp.route('/admin/drive-health', methods=['GET'])
+@auth_required
+@admin_required
+def drive_health(current_user):
+    result = get_drive_health_status()
+    status_code = 200 if result.get('success') else 503
+    return jsonify(result), status_code
 

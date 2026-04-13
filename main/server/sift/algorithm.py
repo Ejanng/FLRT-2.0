@@ -15,6 +15,7 @@ import cv2
 import numpy as np
 import requests
 from google.oauth2 import service_account
+from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
@@ -27,6 +28,8 @@ SECOND_BEST_MATCH_MULTIPLIER = float(os.getenv('SIFT_SECOND_BEST_MULTIPLIER', '1
 
 # Setup paths
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+SERVER_DIR = os.path.dirname(MODULE_DIR)
+WORKSPACE_DIR = os.path.dirname(SERVER_DIR)
 RES_DIR = os.path.join(MODULE_DIR, 'res')
 os.makedirs(RES_DIR, exist_ok=True)
 os.makedirs(os.path.join(RES_DIR, 'train'), exist_ok=True)
@@ -99,6 +102,40 @@ def _compute_effective_match_workers(db_size: int) -> int:
     return max(1, baseline // active)
 
 
+def _resolve_service_account_file_path(configured_path: str) -> Optional[str]:
+    """Resolve credential path across common run locations.
+
+    Supports absolute paths and relative paths when app is launched from either
+    workspace root or server root.
+    """
+    if not configured_path:
+        return None
+
+    expanded = os.path.expanduser(configured_path.strip())
+    if not expanded:
+        return None
+
+    candidates = []
+    if os.path.isabs(expanded):
+        candidates.append(expanded)
+    else:
+        candidates.extend([
+            os.path.abspath(expanded),
+            os.path.abspath(os.path.join(SERVER_DIR, expanded)),
+            os.path.abspath(os.path.join(WORKSPACE_DIR, expanded)),
+        ])
+
+    seen = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if os.path.exists(candidate):
+            return candidate
+
+    return None
+
+
 def _load_service_account_credentials():
     """Load service account credentials from env JSON/base64 or JSON file path."""
     json_text = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON', '').strip()
@@ -119,14 +156,26 @@ def _load_service_account_credentials():
         except Exception as e:
             _log(f"Service account base64 env parse failed: {e}", force=True)
 
-    if os.path.exists(GDRIVE_SERVICE_ACCOUNT_FILE):
+    resolved_service_account_file = _resolve_service_account_file_path(GDRIVE_SERVICE_ACCOUNT_FILE)
+
+    if resolved_service_account_file:
         try:
             return service_account.Credentials.from_service_account_file(
-                GDRIVE_SERVICE_ACCOUNT_FILE,
+                resolved_service_account_file,
                 scopes=SCOPES,
             )
         except Exception as e:
-            _log(f"Service account file load failed ({GDRIVE_SERVICE_ACCOUNT_FILE}): {e}", force=True)
+            _log(
+                f"Service account file load failed ({resolved_service_account_file}) "
+                f"from configured GOOGLE_SERVICE_ACCOUNT_FILE={GDRIVE_SERVICE_ACCOUNT_FILE}: {e}",
+                force=True,
+            )
+    elif GDRIVE_SERVICE_ACCOUNT_FILE:
+        _log(
+            "Service account file not found for configured GOOGLE_SERVICE_ACCOUNT_FILE="
+            f"{GDRIVE_SERVICE_ACCOUNT_FILE}",
+            force=True,
+        )
 
     return None
 
@@ -168,7 +217,17 @@ def get_drive_service():
     _log_authenticated_google_account(_DRIVE_SERVICE)
 
     try:
-        validate_required_gdrive_folders(_DRIVE_SERVICE)
+        folder_status = validate_required_gdrive_folders(_DRIVE_SERVICE)
+        failed = [
+            name for name, details in folder_status.items()
+            if details.get('status') == 'failed'
+        ]
+        if failed:
+            _log(
+                "Google Drive folder validation has failures at startup: "
+                + ', '.join(failed),
+                force=True,
+            )
     except Exception as e:
         _log(f"Folder validation failed (non-blocking): {e}", force=True)
 
@@ -227,7 +286,7 @@ def ensure_gdrive_folder_exists(service, folder_url_or_id, folder_name):
     try:
         meta = service.files().get(
             fileId=folder_id,
-            fields='id,name,mimeType',
+            fields='id,name,mimeType,driveId',
             supportsAllDrives=True,
         ).execute()
         if meta.get('mimeType') == 'application/vnd.google-apps.folder':
@@ -238,6 +297,48 @@ def ensure_gdrive_folder_exists(service, folder_url_or_id, folder_name):
     except Exception as e:
         _log(f"Folder missing/inaccessible: '{folder_name}' (ID: {folder_id}). Cause: {e}", force=True)
         return None
+
+
+def get_gdrive_folder_profile(service, folder_url_or_id, folder_name='Folder'):
+    """Return folder accessibility and storage profile details."""
+    folder_id = extract_folder_id(folder_url_or_id)
+    if not folder_id:
+        return {
+            'ok': False,
+            'folder_id': None,
+            'folder_name': folder_name,
+            'error': 'Could not extract folder ID',
+            'is_shared_drive': False,
+            'drive_id': None,
+        }
+
+    try:
+        meta = service.files().get(
+            fileId=folder_id,
+            fields='id,name,mimeType,driveId',
+            supportsAllDrives=True,
+        ).execute()
+    except Exception as e:
+        return {
+            'ok': False,
+            'folder_id': folder_id,
+            'folder_name': folder_name,
+            'error': str(e),
+            'is_shared_drive': False,
+            'drive_id': None,
+        }
+
+    is_folder = meta.get('mimeType') == 'application/vnd.google-apps.folder'
+    drive_id = meta.get('driveId')
+    is_shared_drive = bool(drive_id)
+    return {
+        'ok': is_folder,
+        'folder_id': folder_id,
+        'folder_name': meta.get('name') or folder_name,
+        'error': None if is_folder else 'Configured ID is not a folder',
+        'is_shared_drive': is_shared_drive,
+        'drive_id': drive_id,
+    }
 
 
 def validate_required_gdrive_folders(service):
@@ -258,11 +359,44 @@ def validate_required_gdrive_folders(service):
         if not folder_url:
             folder_status[folder_name] = {'status': 'skipped', 'folder_id': None}
             continue
-        folder_id = ensure_gdrive_folder_exists(service, folder_url, folder_name)
+
+        profile = get_gdrive_folder_profile(service, folder_url, folder_name)
+        folder_id = profile.get('folder_id')
+
+        if not profile.get('ok'):
+            folder_status[folder_name] = {
+                'status': 'failed',
+                'folder_id': folder_id,
+                'configured_url': folder_url,
+                'is_shared_drive': False,
+                'drive_id': None,
+                'reason': profile.get('error') or 'folder_unavailable',
+            }
+            continue
+
+        if not profile.get('is_shared_drive'):
+            folder_status[folder_name] = {
+                'status': 'failed',
+                'folder_id': folder_id,
+                'configured_url': folder_url,
+                'is_shared_drive': False,
+                'drive_id': None,
+                'reason': 'non_shared_drive_target',
+                'error': 'Service-account uploads require Shared Drive target folders',
+            }
+            _log(
+                f"Folder '{folder_name}' is accessible but not in Shared Drive (ID: {folder_id}). "
+                "Service-account uploads may fail with storage quota errors.",
+                force=True,
+            )
+            continue
+
         folder_status[folder_name] = {
-            'status': 'ready' if folder_id else 'failed',
+            'status': 'ready',
             'folder_id': folder_id,
             'configured_url': folder_url,
+            'is_shared_drive': True,
+            'drive_id': profile.get('drive_id'),
         }
     return folder_status
 
@@ -531,7 +665,39 @@ def build_database_from_url(image_url):
     return database
 
 
+def _is_non_retryable_gdrive_upload_error(exc: Exception) -> bool:
+    """Return True for permanent Drive errors where retry will not help."""
+    text = str(exc or '')
+    content_text = ''
+
+    if isinstance(exc, HttpError):
+        raw_content = getattr(exc, 'content', b'') or b''
+        if isinstance(raw_content, bytes):
+            content_text = raw_content.decode('utf-8', errors='ignore')
+        else:
+            content_text = str(raw_content)
+
+    haystack = f"{text}\n{content_text}".lower()
+    return (
+        'storagequotaexceeded' in haystack
+        or 'service accounts do not have storage quota' in haystack
+        or 'service-account storage quota limitation' in haystack
+        or 'google drive upload blocked' in haystack
+    )
+
+
+def _friendly_non_retryable_upload_error(exc: Exception) -> str:
+    if _is_non_retryable_gdrive_upload_error(exc):
+        return (
+            'Google Drive upload blocked: service-account storage quota limitation. '
+            'Use a Shared Drive destination (recommended) or OAuth/domain-wide delegation.'
+        )
+    return str(exc)
+
+
 def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, max_retries=3):
+    non_retryable_error = None
+
     if not folder_id:
         _audit_log('gdrive_upload_error', reason='missing_folder_id', filename=filename)
         return {'success': False, 'error': 'No folder_id provided'}
@@ -550,6 +716,20 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, m
 
         img_bytes = io.BytesIO(img_encoded.tobytes())
         service = get_drive_service()
+
+        target_profile = get_gdrive_folder_profile(service, folder_id, 'Upload Target')
+        if not target_profile.get('ok'):
+            raise RuntimeError(
+                f"Google Drive upload blocked: upload folder is unavailable ({target_profile.get('error')})."
+            )
+
+        if not target_profile.get('is_shared_drive'):
+            raise RuntimeError(
+                'Google Drive upload blocked: target folder is not in a Shared Drive. '
+                'Service-account uploads to non-shared-drive folders can fail with storage quota limits. '
+                'Move target folders into a Shared Drive or switch to OAuth/domain-wide delegation.'
+            )
+
         file_metadata = {'name': filename, 'parents': [folder_id]}
 
         last_error = None
@@ -585,6 +765,18 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, m
                 }
             except Exception as upload_e:
                 last_error = upload_e
+
+                if _is_non_retryable_gdrive_upload_error(upload_e):
+                    non_retryable_error = RuntimeError(_friendly_non_retryable_upload_error(upload_e))
+                    _audit_log(
+                        'gdrive_upload_non_retryable',
+                        filename=filename,
+                        folder_id=folder_id,
+                        attempt=attempt + 1,
+                        error=str(upload_e),
+                    )
+                    break
+
                 _audit_log(
                     'gdrive_upload_retry',
                     filename=filename,
@@ -595,11 +787,18 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, m
                 if attempt < max_retries - 1:
                     time.sleep(1 * (attempt + 1))
 
+        if non_retryable_error is not None:
+            raise non_retryable_error
+
         raise last_error or RuntimeError('Upload failed after retries')
     except Exception as e:
         error_msg = f'Upload failed: {e}'
         _audit_log('gdrive_upload_error', filename=filename, folder_id=folder_id, error=error_msg)
-        return {'success': False, 'error': error_msg}
+        return {
+            'success': False,
+            'error': error_msg,
+            'non_retryable': (non_retryable_error is not None) or _is_non_retryable_gdrive_upload_error(e),
+        }
 
 
 def _normalize_database_entries(database: List[Any]) -> List[Dict[str, Any]]:

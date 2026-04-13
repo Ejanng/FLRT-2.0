@@ -1,7 +1,7 @@
 // client/src/routes/admin/dashboard/index.tsx
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Box, Clock, CheckCircle, TrendingUp, LogOut, Loader2, RefreshCw } from 'lucide-react'
 import { statsApi, authApi, siftApi } from '../../../services/api'
 import { requireAdminAuth } from '../../../utils/adminAuth'
@@ -44,6 +44,28 @@ interface WebhookTestResponse {
   }
 }
 
+interface DriveFolderStatus {
+  status: 'ready' | 'failed' | 'skipped'
+  folder_id: string | null
+  configured_url?: string
+}
+
+interface DriveHealthResponse {
+  success: boolean
+  checked_at: string
+  auth: {
+    ok: boolean
+    error: string | null
+  }
+  folders: Record<string, DriveFolderStatus>
+  summary: {
+    total: number
+    ready: number
+    failed: number
+    skipped: number
+  }
+}
+
 export const Route = createFileRoute('/admin/dashboard/')({
   beforeLoad: () => {
     requireAdminAuth()
@@ -57,7 +79,20 @@ function DashboardPage() {
   const [retrainMessage, setRetrainMessage] = useState('')
   const [webhookTestResult, setWebhookTestResult] = useState<WebhookTestResponse | null>(null)
   const [webhookTestMessage, setWebhookTestMessage] = useState('')
+  const [driveHealthResult, setDriveHealthResult] = useState<DriveHealthResponse | null>(null)
+  const [driveHealthMessage, setDriveHealthMessage] = useState('')
   const [search, setSearch] = useState('')
+  const driveHealthPanelRef = useRef<HTMLDivElement | null>(null)
+  const driveHealthFailedCount = driveHealthResult?.summary?.failed || 0
+  const hasDriveHealthIssues = driveHealthFailedCount > 0 || (!!driveHealthResult && !driveHealthResult.auth.ok)
+
+  const focusDriveHealthPanel = () => {
+    if (!driveHealthResult) {
+      driveHealthMutation.mutate()
+      return
+    }
+    driveHealthPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   // Fetch dashboard stats with auto-refresh every 30 seconds
   const { 
@@ -184,6 +219,22 @@ function DashboardPage() {
     },
   })
 
+  const driveHealthMutation = useMutation({
+    mutationFn: () => siftApi.driveHealth() as Promise<DriveHealthResponse>,
+    onSuccess: (data) => {
+      setDriveHealthResult(data)
+      setDriveHealthMessage(data.success ? 'Drive health check passed.' : 'Drive health check found issues.')
+      setTimeout(() => {
+        driveHealthPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 0)
+      setTimeout(() => setDriveHealthMessage(''), 4000)
+    },
+    onError: (error: any) => {
+      setDriveHealthMessage(error?.message || 'Drive health check failed')
+      setTimeout(() => setDriveHealthMessage(''), 4000)
+    },
+  })
+
   // Listen for storage events to refresh data
   useEffect(() => {
     const handleStorage = () => {
@@ -200,7 +251,18 @@ function DashboardPage() {
         {/* Header with Logout and Actions */}
         <div className="space-y-3">
           <div className="flex items-start justify-between gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+              {hasDriveHealthIssues && (
+                <button
+                  onClick={focusDriveHealthPanel}
+                  className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 hover:bg-red-200 transition-colors"
+                  title="Jump to Drive Health details"
+                >
+                  Drive Issue: {driveHealthFailedCount || 1}
+                </button>
+              )}
+            </div>
             <button
               onClick={handleLogout}
               className="flex items-center gap-2 px-3 sm:px-4 py-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
@@ -243,6 +305,19 @@ function DashboardPage() {
             >
               {webhookTestMutation.isPending ? 'Testing...' : 'Test Webhooks'}
             </button>
+            <button
+              onClick={() => driveHealthMutation.mutate()}
+              disabled={driveHealthMutation.isPending}
+              className={`px-2.5 py-1 text-xs rounded-lg border hover:bg-gray-100 disabled:opacity-50 ${
+                hasDriveHealthIssues
+                  ? 'border-red-300 text-red-700 bg-red-50'
+                  : 'border-gray-300 text-gray-700'
+              }`}
+              title="Check Google Drive auth and folder access"
+            >
+              {driveHealthMutation.isPending ? 'Checking...' : 'Test Drive Health'}
+              {hasDriveHealthIssues && !driveHealthMutation.isPending ? ` (${driveHealthFailedCount || 1})` : ''}
+            </button>
           </div>
         </div>
         {retrainMessage && (
@@ -250,6 +325,9 @@ function DashboardPage() {
         )}
         {webhookTestMessage && (
           <p className="text-xs text-[#0217f7] -mt-2">{webhookTestMessage}</p>
+        )}
+        {driveHealthMessage && (
+          <p className="text-xs text-[#0217f7] -mt-2">{driveHealthMessage}</p>
         )}
         {webhookTestResult?.results && (
           <div className="glass-card rounded-xl p-4 text-xs text-gray-700 space-y-2">
@@ -304,6 +382,55 @@ function DashboardPage() {
                   </span>
                 </p>
                 {webhookTestResult.results.users.error && <p>Error: {webhookTestResult.results.users.error}</p>}
+              </div>
+            </div>
+          </div>
+        )}
+        {driveHealthResult && (
+          <div ref={driveHealthPanelRef} className="glass-card rounded-xl p-4 text-xs text-gray-700 space-y-2">
+            <p className="font-semibold text-gray-900">Drive Health Result</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-lg border border-gray-200 p-3">
+                <p className="font-medium mb-1">Authentication</p>
+                <p>
+                  Status:{' '}
+                  <span className={driveHealthResult.auth.ok ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'}>
+                    {driveHealthResult.auth.ok ? 'OK' : 'FAILED'}
+                  </span>
+                </p>
+                {driveHealthResult.auth.error && <p>Error: {driveHealthResult.auth.error}</p>}
+                <p>Checked at: {new Date(driveHealthResult.checked_at).toLocaleString()}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 p-3">
+                <p className="font-medium mb-1">Summary</p>
+                <p>Total: {driveHealthResult.summary.total}</p>
+                <p className="text-green-600">Ready: {driveHealthResult.summary.ready}</p>
+                <p className="text-red-500">Failed: {driveHealthResult.summary.failed}</p>
+                <p>Skipped: {driveHealthResult.summary.skipped}</p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-3">
+              <p className="font-medium mb-2">Folder Details</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {Object.entries(driveHealthResult.folders || {}).map(([name, info]) => (
+                  <div key={name} className="rounded border border-gray-100 p-2">
+                    <p className="font-medium">{name}</p>
+                    <p>
+                      Status:{' '}
+                      <span className={
+                        info.status === 'ready'
+                          ? 'text-green-600 font-semibold'
+                          : info.status === 'failed'
+                            ? 'text-red-500 font-semibold'
+                            : 'text-gray-500 font-semibold'
+                      }>
+                        {info.status}
+                      </span>
+                    </p>
+                    {info.folder_id && <p>ID: {info.folder_id}</p>}
+                  </div>
+                ))}
               </div>
             </div>
           </div>

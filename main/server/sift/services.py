@@ -4,6 +4,7 @@ import pickle
 import re
 import threading
 import atexit
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from typing import Optional, Iterable, Set
@@ -225,6 +226,59 @@ def retrain_model_for_status(report_status: str):
 
     return _run_sift_job(f'retrain_{normalized_status}', _job)
 
+
+def get_drive_health_status():
+    """
+    Validate Drive auth and required folder accessibility for diagnostics.
+
+    Returns:
+        Dict with `success`, `auth`, and `folders` status details.
+    """
+    checked_at = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "success": False,
+        "checked_at": checked_at,
+        "auth": {
+            "ok": False,
+            "error": None,
+        },
+        "folders": {},
+        "summary": {
+            "total": 0,
+            "ready": 0,
+            "failed": 0,
+            "skipped": 0,
+        },
+    }
+
+    try:
+        service = sift.get_drive_service()
+        payload["auth"]["ok"] = True
+    except Exception as e:
+        payload["auth"]["error"] = str(e)
+        return payload
+
+    try:
+        folder_status = sift.validate_required_gdrive_folders(service)
+    except Exception as e:
+        payload["auth"]["error"] = f"Folder validation failed: {e}"
+        return payload
+
+    payload["folders"] = folder_status
+    payload["summary"]["total"] = len(folder_status)
+
+    for details in folder_status.values():
+        status = details.get("status")
+        if status == "ready":
+            payload["summary"]["ready"] += 1
+        elif status == "failed":
+            payload["summary"]["failed"] += 1
+        else:
+            payload["summary"]["skipped"] += 1
+
+    payload["success"] = payload["summary"]["failed"] == 0 and payload["auth"]["ok"]
+    return payload
+
 def process_image(image_url):
     output_folder_id = _ensure_folder_ready(
         Config.MATCH_RESULTS_GDRIVE_FOLDER_URL,
@@ -336,14 +390,20 @@ def process_image_for_report(image_url, report_status):
                 return {
                     "success": False,
                     "error": f"Database error: {db_e}"
-                }
+                }, {
+                    "success": False,
+                    "error": "Public copy skipped due to database error",
+                }, None
             
             if not database:
                 _log(f"[MATCH ERROR] {target_status} database not available", force=True)
                 return {
                     "success": False,
                     "error": f"No {target_status} database available for matching. Admin needs to retrain."
-                }
+                }, {
+                    "success": False,
+                    "error": "Public copy skipped because no match database is available",
+                }, db_file
 
             _log(f"[MATCH] database ready with {len(database)} items")
             
@@ -356,7 +416,10 @@ def process_image_for_report(image_url, report_status):
                 return {
                     "success": False,
                     "error": "Could not access Match Results folder from configuration"
-                }
+                }, {
+                    "success": False,
+                    "error": "Public copy skipped because match-results folder is unavailable",
+                }, db_file
             _log(f"[MATCH] result folder={output_folder_id}")
 
             try:
@@ -366,7 +429,10 @@ def process_image_for_report(image_url, report_status):
                 return {
                     "success": False,
                     "error": f"Matching failed: {detect_e}"
-                }
+                }, {
+                    "success": False,
+                    "error": "Public copy skipped due to matching error",
+                }, db_file
             
             # If match found, copy to public folder for sharing
             public_copy = {"success": False, "error": "No match to share"}
@@ -376,7 +442,10 @@ def process_image_for_report(image_url, report_status):
             
             return result, public_copy, db_file
 
-        result, public_copy, db_file = _run_sift_job(f'process_report_{target_status}', _job)
+        job_result = _run_sift_job(f'process_report_{target_status}', _job)
+        if not isinstance(job_result, tuple) or len(job_result) != 3:
+            raise RuntimeError(f"Invalid SIFT job result format: {type(job_result).__name__}")
+        result, public_copy, db_file = job_result
         
     except RuntimeError as e:
         error_msg = f"SIFT job error: {e}"
@@ -732,6 +801,26 @@ def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder
                 }
             else:
                 last_error = upload_result.get('error', 'Unknown upload error')
+                non_retryable = upload_result.get('non_retryable') or (
+                    isinstance(last_error, str)
+                    and 'storage quota' in last_error.lower()
+                )
+
+                # Permanent failures (e.g., service-account quota limitation)
+                # should fail fast instead of repeating wrapper retries.
+                if non_retryable:
+                    sift.log_audit_event(
+                        'gdrive_upload_wrapper_error',
+                        filename_prefix=filename_prefix,
+                        folder_id=folder_id,
+                        reason='non_retryable',
+                        error=last_error,
+                    )
+                    return {
+                        "success": False,
+                        "error": last_error,
+                    }
+
                 retry_count += 1
                 if retry_count < max_retries:
                     import time
