@@ -1,9 +1,4 @@
 from core.extensions import db
-from datetime import datetime, timezone
-
-
-def utc_now():
-    return datetime.now(timezone.utc)
 
 
 class Reports(db.Model):
@@ -23,7 +18,8 @@ class Reports(db.Model):
     description = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(20), nullable=False)  # lost, found, published_lost, published_found, returned
     location = db.Column(db.String(100), nullable=False)
-    date_reported = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+    date_reported = db.Column(db.DateTime(timezone=True), nullable=False)
+    date_lost = db.Column(db.Date, nullable=True)
     time = db.Column(db.Time, nullable=True)
     image = db.Column(db.String(255), nullable=True)
     category = db.Column(db.String(50), nullable=True)  # Electronics, Accessories, Bags, Books, Stationery
@@ -55,6 +51,7 @@ class Reports(db.Model):
             'status': self.status,
             'location': self.location,
             'date_reported': self.date_reported.isoformat(),
+            'date_lost': self.date_lost.isoformat() if self.date_lost else None,
             'time': self.time.isoformat() if self.time else None,
             'image': self.image,
             'category': self.category

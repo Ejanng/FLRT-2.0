@@ -24,7 +24,7 @@ class PendingClaims(db.Model):
     description = db.Column(db.Text, nullable=False)  # Proof of ownership description
     status = db.Column(db.String(20), nullable=False, default='pending')  # pending, accepted, rejected
     image = db.Column(db.String(255), nullable=True)  # Proof image
-    date_claimed = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+    date_claimed = db.Column(db.DateTime(timezone=True), nullable=False)
 
     report = db.relationship("Reports", back_populates="pending_claims", lazy="select")
 

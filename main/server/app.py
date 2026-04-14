@@ -1,5 +1,6 @@
 from flask import Flask
 import os
+from sqlalchemy import inspect, text
 from core.config import Config
 from core.extensions import db, bcrypt, jwt, cors
 from auth.routes import auth_bp
@@ -10,6 +11,21 @@ from found_items.routes import found_items_bp  # New!
 from models import *
 from sift.routes import sift_bp
 from core.notifications import is_valid_discord_webhook_url
+
+
+def _ensure_reports_date_lost_column():
+    inspector = inspect(db.engine)
+    existing_tables = set(inspector.get_table_names())
+    if 'reports' not in existing_tables:
+        return
+
+    report_columns = {col['name'] for col in inspector.get_columns('reports')}
+    if 'date_lost' in report_columns:
+        return
+
+    db.session.execute(text('ALTER TABLE reports ADD COLUMN date_lost DATE'))
+    db.session.commit()
+    print('✅ Added missing reports.date_lost column')
 
 def create_app():
     app = Flask(__name__)
@@ -30,6 +46,7 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        _ensure_reports_date_lost_column()
 
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/auth')

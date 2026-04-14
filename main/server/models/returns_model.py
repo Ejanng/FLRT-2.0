@@ -25,7 +25,7 @@ class Returns(db.Model):
     description = db.Column(db.Text, nullable=False)            # description or instruction of the return
     status = db.Column(db.String(20), nullable=False, default='pending')  # status of the return (pending, returned)
     image = db.Column(db.String(255), nullable=True)            # image of the return
-    date_returned = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)  # date when the return was made
+    date_returned = db.Column(db.DateTime(timezone=True), nullable=False)  # date when the return was made
 
     report = db.relationship("Reports", back_populates="returns", lazy="select")
     admin = db.relationship("Admins", back_populates="returns", lazy="select")

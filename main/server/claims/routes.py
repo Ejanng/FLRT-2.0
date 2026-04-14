@@ -81,7 +81,8 @@ def submit_claim():
             contact_info=contact_info,
             description=description,
             status='pending',
-            image=image_url
+            image=image_url,
+            date_claimed=datetime.now(timezone.utc)
         )
         
         db.session.add(new_claim)
@@ -241,7 +242,8 @@ def review_claim(claim_id):
                 contact_info=claim.contact_info,
                 description=claim.description,
                 status='returned',
-                image=claim.image
+                image=claim.image,
+                date_returned=datetime.now(timezone.utc)
             )
             db.session.add(return_record)
             return_announcement = {

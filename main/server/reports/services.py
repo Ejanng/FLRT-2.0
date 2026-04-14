@@ -2,7 +2,7 @@ from models.reports_model import Reports, db
 from models.pending_claims_model import PendingClaims
 from models.found_items_model import FoundItems
 from sift.services import process_image_for_report, archive_returned_item_images
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 
 
 def _is_sift_busy_error(error_text: str) -> bool:
@@ -16,9 +16,26 @@ def _is_sift_busy_error(error_text: str) -> bool:
         or 'job timeout' in normalized
     )
 
+
+def _parse_iso_date(raw_value):
+    if not raw_value:
+        return None
+    try:
+        value = str(raw_value).strip()
+        if not value:
+            return None
+        return date.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
+
 def submit_report(data, image_url=None):
     """Create a new report."""
     final_image_url = image_url or data.get('image')
+    status = (data.get('status') or '').strip().lower()
+    date_lost_input = data.get('date_lost') or data.get('date')
+    date_lost = _parse_iso_date(date_lost_input) if status == 'lost' else None
+    date_reported = datetime.now(timezone.utc)
+    
     new_report = Reports(
         item_name=data.get('item_name'),
         description=data.get('description'),
@@ -27,7 +44,8 @@ def submit_report(data, image_url=None):
         time=data.get('time') or None,
         image=final_image_url,
         category=data.get('category', 'Uncategorized'),
-        date_reported=datetime.now(timezone.utc)
+        date_reported=date_reported,
+        date_lost=date_lost,
     )
     
     db.session.add(new_report)
@@ -241,7 +259,8 @@ def process_report_with_image_url(image_url, data, new_report):
             contact_info=data.get('contact_info'),
             description=data.get('description', ''),
             status='pending',
-            image=public_view_link or matched_source or matched_gdrive_id or image_url
+            image=public_view_link or matched_source or matched_gdrive_id or image_url,
+            date_claimed=datetime.now(timezone.utc)
         )
         db.session.add(new_claim)
         db.session.commit()
@@ -286,7 +305,8 @@ def create_pending_claim_for_existing_report(report_id, data, matched_image_sour
             contact_info=contact_info,
             description=data.get('description') or report.description or '',
             status='pending',
-            image=matched_image_source or report.image
+            image=matched_image_source or report.image,
+            date_claimed=datetime.now(timezone.utc)
         )
         db.session.add(new_claim)
         db.session.commit()

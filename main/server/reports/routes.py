@@ -131,6 +131,7 @@ def report_item():
             'status': status,
             'location': location,
             'date': date,
+            'date_lost': date if status == 'lost' else None,
             'time': time,
             'category': category,
             'image': image_url,
