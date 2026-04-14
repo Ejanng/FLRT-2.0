@@ -1,4 +1,3 @@
-import imghdr
 import os
 from typing import Optional, Tuple
 
@@ -6,7 +5,17 @@ from werkzeug.datastructures import FileStorage
 
 ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png'}
 ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/jpg', 'image/png'}
-ALLOWED_IMAGE_SIGNATURES = {'jpeg', 'png'}
+JPEG_MAGIC = b'\xff\xd8\xff'
+PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
+
+
+def _detect_image_type(header: bytes) -> Optional[str]:
+    """Return the detected image type based on magic bytes."""
+    if header.startswith(JPEG_MAGIC):
+        return 'jpeg'
+    if header.startswith(PNG_MAGIC):
+        return 'png'
+    return None
 
 
 def validate_uploaded_image(image_file: Optional[FileStorage]) -> Tuple[bool, Optional[str]]:
@@ -31,8 +40,8 @@ def validate_uploaded_image(image_file: Optional[FileStorage]) -> Tuple[bool, Op
     finally:
         stream.seek(current_pos)
 
-    detected_type = imghdr.what(None, h=header)
-    if detected_type not in ALLOWED_IMAGE_SIGNATURES:
+    detected_type = _detect_image_type(header)
+    if detected_type is None:
         return False, 'File content is not a valid JPG or PNG image.'
 
     return True, None

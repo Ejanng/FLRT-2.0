@@ -2,6 +2,8 @@ import { Link, useLocation } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Menu, X, Home, FileText, Search, Info } from 'lucide-react'
 
+const SYSTEM_VERSION = import.meta.env.VITE_SYSTEM_VERSION || 'v04-14-26.1.0'
+
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false)
   const location = useLocation()
@@ -30,11 +32,16 @@ export default function Header() {
               <span className="text-white font-bold text-lg">F</span>
               <div className="absolute w-3 h-3 bg-[#f5e102] rounded-full animate-pulse ml-6 -mt-6" />
             </div>
-            <span className="text-2xl font-bold hidden sm:block">
-              <span className="text-[#0217f7]">FL</span>
-              <span className="text-[#f5e102]">R</span>
-              <span className="text-[#0217f7]">T</span>
-            </span>
+            <div className="hidden sm:block leading-none">
+              <span className="text-2xl font-bold block">
+                <span className="text-[#0217f7]">FL</span>
+                <span className="text-[#f5e102]">R</span>
+                <span className="text-[#0217f7]">T</span>
+              </span>
+              <span className="mt-1 inline-flex text-[10px] px-2 py-0.5 rounded-full bg-[#0217f7]/10 text-[#0217f7] font-semibold tracking-wide">
+                {SYSTEM_VERSION}
+              </span>
+            </div>
           </Link>
 
           <nav className="hidden md:flex items-center gap-2">

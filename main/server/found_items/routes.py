@@ -14,6 +14,7 @@ from found_items.services import (
 from auth.token import decode_access_token
 from datetime import datetime, timezone
 from core.upload_validation import validate_uploaded_image
+from core.notifications import send_discord_notification
 from werkzeug.utils import secure_filename
 import os
 
@@ -103,6 +104,18 @@ def submit_found_item():
             image_path=image_path
         )
         
+        send_discord_notification(
+            title='New Found Item Submission',
+            description='A found item was submitted and is waiting for admin coordination.',
+            audience='admin',
+            fields=[
+                {'name': 'Found Item ID', 'value': str(result.get('found_item_id') or 'N/A'), 'inline': True},
+                {'name': 'Report ID', 'value': str(result.get('report_id') or 'N/A'), 'inline': True},
+                {'name': 'Finder', 'value': result.get('finder_name') or 'N/A', 'inline': False},
+                {'name': 'Item', 'value': result.get('item_name') or 'N/A', 'inline': False},
+            ],
+        )
+
         return jsonify({
             "message": "Found item submitted successfully",
             "found_item": result
@@ -154,7 +167,18 @@ def contact_found_item(found_item_id):
         result = contact_finder(found_item_id, admin_notes, admin_id)
         if not result:
             return jsonify({"error": "Found item not found"}), 404
-        
+
+        send_discord_notification(
+            title='Finder Contacted',
+            description='Admin contacted a finder as part of found-item validation.',
+            audience='admin',
+            fields=[
+                {'name': 'Found Item ID', 'value': str(result.get('found_item_id') or found_item_id), 'inline': True},
+                {'name': 'Admin ID', 'value': str(admin_id or 'N/A'), 'inline': True},
+                {'name': 'Status', 'value': result.get('status') or 'contacted', 'inline': True},
+            ],
+        )
+
         return jsonify({
             "message": "Finder contacted successfully",
             "found_item": result
@@ -178,6 +202,17 @@ def contact_found_item_by_report(report_id):
         if not result:
             return jsonify({"error": "Found report coordination record not found"}), 404
 
+        send_discord_notification(
+            title='Found Report Coordination Started',
+            description='Admin contacted finder for a found report and started coordination.',
+            audience='admin',
+            fields=[
+                {'name': 'Report ID', 'value': str(report_id), 'inline': True},
+                {'name': 'Admin ID', 'value': str(admin_id or 'N/A'), 'inline': True},
+                {'name': 'Status', 'value': result.get('status') or 'contacted', 'inline': True},
+            ],
+        )
+
         return jsonify({
             "message": "Finder contacted successfully",
             "found_item": result
@@ -196,6 +231,18 @@ def verify_found_item_report(report_id):
         result = verify_found_item_by_report(report_id, admin_notes, admin_id)
         if not result:
             return jsonify({"error": "Found report coordination record not found"}), 404
+
+        send_discord_notification(
+            title='Found Report Verified',
+            description='Admin verification for a found report was completed.',
+            audience='admin',
+            fields=[
+                {'name': 'Report ID', 'value': str(report_id), 'inline': True},
+                {'name': 'Found Item ID', 'value': str(result.get('found_item_id') or 'N/A'), 'inline': True},
+                {'name': 'Admin ID', 'value': str(admin_id or 'N/A'), 'inline': True},
+                {'name': 'Status', 'value': result.get('status') or 'verified', 'inline': True},
+            ],
+        )
 
         return jsonify({
             "message": "Found report coordination verified",
@@ -218,6 +265,17 @@ def close_item(found_item_id):
         if not result:
             return jsonify({"error": "Found item not found"}), 404
         
+        send_discord_notification(
+            title='Found Item Closed',
+            description='A found item workflow was closed by admin.',
+            audience='admin' if status == 'cancelled' else 'both',
+            fields=[
+                {'name': 'Found Item ID', 'value': str(result.get('found_item_id') or found_item_id), 'inline': True},
+                {'name': 'Status', 'value': status, 'inline': True},
+                {'name': 'Item', 'value': result.get('item_name') or 'N/A', 'inline': False},
+            ],
+        )
+
         return jsonify({
             "message": f"Found item marked as {status}",
             "found_item": result

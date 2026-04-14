@@ -20,6 +20,23 @@ import os
 
 report_bp = Blueprint('reports', __name__)
 
+
+def _send_report_submission_notification(new_report, status, item_name, location, has_image):
+    normalized_status = (status or '').strip().lower() or 'unknown'
+    send_discord_notification(
+        title='New Report Needs Admin Validation',
+        description='A new report has been submitted and is waiting for admin review.',
+        audience='admin',
+        fields=[
+            {'name': 'Report ID', 'value': str(new_report.report_id), 'inline': True},
+            {'name': 'Status', 'value': normalized_status, 'inline': True},
+            {'name': 'Has Image', 'value': 'Yes' if has_image else 'No', 'inline': True},
+            {'name': 'Item', 'value': item_name or 'N/A', 'inline': False},
+            {'name': 'Location', 'value': location or 'N/A', 'inline': False},
+        ],
+    )
+
+
 @report_bp.route('/report-item', methods=['POST'])
 def report_item():
     try:
@@ -64,6 +81,18 @@ def report_item():
             )
             if error:
                 return jsonify({"error": error}), 400
+
+            send_discord_notification(
+                title='Matched Report Claim Completed',
+                description='A user completed personal details for a matched report flow.',
+                audience='admin',
+                fields=[
+                    {'name': 'Report ID', 'value': str(existing_report_id), 'inline': True},
+                    {'name': 'Claim ID', 'value': str(claim.claim_id), 'inline': True},
+                    {'name': 'Student #', 'value': student_number or 'N/A', 'inline': True},
+                ],
+            )
+
             return jsonify({
                 "message": "Match found. Pending claim created.",
                 "new_pending_claim": claim.to_json(),
@@ -117,20 +146,13 @@ def report_item():
         # Create the report
         new_report = submit_report(data, image_url=image_url)
 
-        if status == 'found':
-            send_discord_notification(
-                title='New Found Report Needs Review',
-                description='A new found-item report was submitted and needs admin action.',
-                audience='admin',
-                fields=[
-                    {'name': 'Report ID', 'value': str(new_report.report_id), 'inline': True},
-                    {'name': 'Status', 'value': status or 'N/A', 'inline': True},
-                    {'name': 'Item', 'value': item_name or 'N/A', 'inline': False},
-                    {'name': 'Finder Name', 'value': student_name or 'N/A', 'inline': True},
-                    {'name': 'Finder Student #', 'value': student_number or 'N/A', 'inline': True},
-                    {'name': 'Finder Contact', 'value': contact_info or 'N/A', 'inline': False},
-                ],
-            )
+        _send_report_submission_notification(
+            new_report=new_report,
+            status=status,
+            item_name=item_name,
+            location=location,
+            has_image=bool(image_url),
+        )
 
         if status == 'found' and all([student_name, student_number, contact_info]):
             try:
@@ -270,7 +292,18 @@ def update_report(report_id):
     
     if error:
         return jsonify({"error": error}), 404
-    
+
+    send_discord_notification(
+        title='Report Status Updated',
+        description='An admin updated a report status during validation/review.',
+        audience='admin',
+        fields=[
+            {'name': 'Report ID', 'value': str(report.report_id), 'inline': True},
+            {'name': 'New Status', 'value': report.status or 'N/A', 'inline': True},
+            {'name': 'Item', 'value': report.item_name or 'N/A', 'inline': False},
+        ],
+    )
+
     return jsonify({
         "message": "Report updated successfully",
         "report": report.to_json()
@@ -286,6 +319,16 @@ def delete_report_route(report_id):
     
     if error:
         return jsonify({"error": error}), 404
+
+    send_discord_notification(
+        title='Report Rejected/Deleted',
+        description='A report was removed during admin validation.',
+        audience='admin',
+        fields=[
+            {'name': 'Report ID', 'value': str(report_id), 'inline': True},
+            {'name': 'Item', 'value': report.item_name if report else 'N/A', 'inline': False},
+        ],
+    )
 
     return jsonify({
         "message": "Report deleted successfully",

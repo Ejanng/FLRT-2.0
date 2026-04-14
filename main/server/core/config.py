@@ -18,6 +18,7 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     API_BASE_URL = os.getenv("API_BASE_URL", "http://192.168.1.131:5000")
+    SYSTEM_VERSION = os.getenv('SYSTEM_VERSION', 'v04-14-26.1.0')
 
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
     ALGORITHM = os.getenv('ALGORITHM')
