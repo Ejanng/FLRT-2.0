@@ -56,6 +56,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
   const [photoPreview, setPhotoPreview] = useState<string>('')
   const [submitMessage, setSubmitMessage] = useState<string>('')
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | ''>('')
+  const [showStatusPopup, setShowStatusPopup] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [matchResult, setMatchResult] = useState<any>(null)
   const [pendingExistingReportId, setPendingExistingReportId] = useState<number | null>(null)
@@ -85,9 +86,12 @@ export default function ReportForm({ initialData }: ReportFormProps) {
         setShowModal(true)
         setSubmitStatus('')
         setSubmitMessage('')
+        setShowStatusPopup(false)
       } else {
         setSubmitStatus('success')
-        setSubmitMessage(data.message || 'Report submitted successfully!')
+        const successMessage = data.message || 'Report submitted successfully!'
+        setSubmitMessage(`${successMessage} It is now being processed for admin validation.`)
+        setShowStatusPopup(true)
         
         if (data.new_pending_claim) {
           setMatchResult({
@@ -111,6 +115,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
     onError: (error: any) => {
       setSubmitStatus('error')
       setSubmitMessage(error.message || 'Failed to submit report')
+      setShowStatusPopup(true)
     },
   })
 
@@ -126,6 +131,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
       if (fileError) {
         setSubmitStatus('error')
         setSubmitMessage(fileError)
+        setShowStatusPopup(true)
         setFormData((prev) => ({ ...prev, photo: null }))
         setPhotoPreview('')
         e.target.value = ''
@@ -148,6 +154,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
     if (fileError) {
       setSubmitStatus('error')
       setSubmitMessage(fileError)
+      setShowStatusPopup(true)
       setFormData((prev) => ({ ...prev, photo: null }))
       setPhotoPreview('')
       return
@@ -163,6 +170,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
     e.preventDefault()
     setSubmitMessage('')
     setSubmitStatus('')
+    setShowStatusPopup(false)
 
     if (formData.status === 'found' && (!formData.studentName || !formData.studentNumber || !formData.contactInfo)) {
       setPendingData(formData)
@@ -210,6 +218,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
       if (matchResult && pendingData.status === 'lost') {
         setSubmitStatus('error')
         setSubmitMessage('Unable to continue matched report flow. Please submit again.')
+        setShowStatusPopup(true)
         return
       }
       formDataToSend.append('item_name', pendingData.itemName)
@@ -236,17 +245,6 @@ export default function ReportForm({ initialData }: ReportFormProps) {
 
   return (
     <div className="glass-card rounded-3xl p-6 sm:p-8 lg:p-10">
-      {submitMessage && (
-        <div className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
-          submitStatus === 'success'
-            ? 'bg-green-100 text-green-700 border border-green-200' 
-            : 'bg-red-100 text-red-700 border border-red-200'
-        }`}>
-          {submitStatus === 'success' ? <Sparkles size={20} /> : <X size={20} />}
-          {submitMessage}
-        </div>
-      )}
-
       {matchResult && <MatchResultCard match={matchResult} />}
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -396,7 +394,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
               type="file"
               accept=".jpg,.jpeg,.png,image/jpeg,image/png"
               onChange={handlePhotoUpload}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              className={`absolute inset-0 w-full h-full opacity-0 ${photoPreview ? 'pointer-events-none' : 'cursor-pointer'}`}
             />
           </div>
         </div>
@@ -434,6 +432,63 @@ export default function ReportForm({ initialData }: ReportFormProps) {
         isLoading={submitMutation.isPending}
         matchFound={!!matchResult}
       />
+
+      {showStatusPopup && submitMessage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"
+          onClick={() => setShowStatusPopup(false)}
+          role="presentation"
+        >
+          <div
+            className={`relative w-full max-w-md overflow-hidden rounded-3xl border shadow-2xl ${
+              submitStatus === 'success'
+                ? 'bg-white text-green-900 border-green-200'
+                : 'bg-white text-red-900 border-red-200'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+            role="alertdialog"
+            aria-modal="true"
+            aria-live="assertive"
+          >
+            <div
+              className={`h-1.5 w-full ${
+                submitStatus === 'success' ? 'bg-gradient-to-r from-green-400 via-emerald-500 to-green-600' : 'bg-gradient-to-r from-red-400 via-rose-500 to-red-600'
+              }`}
+            />
+
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div
+                  className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                    submitStatus === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                  }`}
+                >
+                  {submitStatus === 'success' ? <Sparkles size={20} /> : <X size={20} />}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base sm:text-lg font-bold tracking-tight">
+                    {submitStatus === 'success' ? 'Submission Received' : 'Submission Failed'}
+                  </h3>
+                  <p className="mt-2 text-sm sm:text-base font-medium leading-relaxed text-gray-700">{submitMessage}</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowStatusPopup(false)}
+                className={`mt-6 w-full rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
+                  submitStatus === 'success'
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-red-600 text-white hover:bg-red-700'
+                }`}
+              >
+                {submitStatus === 'success' ? 'Great, thanks' : 'Try again'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
