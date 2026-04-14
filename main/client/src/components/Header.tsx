@@ -1,6 +1,6 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import { useState } from 'react'
-import { Menu, X, Home, FileText, Search, Info, Shield } from 'lucide-react'
+import { Menu, X, Home, FileText, Search, Info } from 'lucide-react'
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false)
@@ -19,7 +19,6 @@ export default function Header() {
     { to: '/report', label: 'Report', icon: FileText },
     { to: '/claim', label: 'Find', icon: Search },
     { to: '/about', label: 'About', icon: Info },
-    { to: '/admin', label: 'Admin', icon: Shield },
   ]
 
   return (
