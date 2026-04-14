@@ -65,6 +65,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
   const [photoPreview, setPhotoPreview] = useState<string>('')
   const [submitMessage, setSubmitMessage] = useState<string>('')
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | ''>('')
+  const [isBusyNotice, setIsBusyNotice] = useState(false)
   const [showStatusPopup, setShowStatusPopup] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [matchResult, setMatchResult] = useState<any>(null)
@@ -94,10 +95,12 @@ export default function ReportForm({ initialData }: ReportFormProps) {
         setMatchResult(data.match_result || null)
         setShowModal(true)
         setSubmitStatus('')
+        setIsBusyNotice(false)
         setSubmitMessage('')
         setShowStatusPopup(false)
       } else {
         setSubmitStatus('success')
+        setIsBusyNotice(false)
         const successMessage = data.message || 'Report submitted successfully!'
         setSubmitMessage(`${successMessage} It is now being processed for admin validation.`)
         setShowStatusPopup(true)
@@ -123,11 +126,13 @@ export default function ReportForm({ initialData }: ReportFormProps) {
     },
     onError: (error: any) => {
       const rawMessage = error?.message || 'Failed to submit report'
-      const friendlyMessage = isSiftBusyError(rawMessage)
+      const isBusy = isSiftBusyError(rawMessage)
+      const friendlyMessage = isBusy
         ? 'Your report was received, but image matching is currently busy. Please wait a moment and try again for automatic matching.'
         : rawMessage
 
       setSubmitStatus('error')
+      setIsBusyNotice(isBusy)
       setSubmitMessage(friendlyMessage)
       setShowStatusPopup(true)
     },
@@ -184,6 +189,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
     e.preventDefault()
     setSubmitMessage('')
     setSubmitStatus('')
+    setIsBusyNotice(false)
     setShowStatusPopup(false)
 
     if (formData.status === 'found' && (!formData.studentName || !formData.studentNumber || !formData.contactInfo)) {
@@ -231,6 +237,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
     } else {
       if (matchResult && pendingData.status === 'lost') {
         setSubmitStatus('error')
+        setIsBusyNotice(false)
         setSubmitMessage('Unable to continue matched report flow. Please submit again.')
         setShowStatusPopup(true)
         return
@@ -457,6 +464,8 @@ export default function ReportForm({ initialData }: ReportFormProps) {
             className={`relative w-full max-w-md overflow-hidden rounded-3xl border shadow-2xl ${
               submitStatus === 'success'
                 ? 'bg-white text-green-900 border-green-200'
+                : isBusyNotice
+                ? 'bg-white text-amber-900 border-amber-200'
                 : 'bg-white text-red-900 border-red-200'
             }`}
             onClick={(e) => e.stopPropagation()}
@@ -466,7 +475,11 @@ export default function ReportForm({ initialData }: ReportFormProps) {
           >
             <div
               className={`h-1.5 w-full ${
-                submitStatus === 'success' ? 'bg-gradient-to-r from-green-400 via-emerald-500 to-green-600' : 'bg-gradient-to-r from-red-400 via-rose-500 to-red-600'
+                submitStatus === 'success'
+                  ? 'bg-gradient-to-r from-green-400 via-emerald-500 to-green-600'
+                  : isBusyNotice
+                  ? 'bg-gradient-to-r from-amber-300 via-amber-500 to-orange-500'
+                  : 'bg-gradient-to-r from-red-400 via-rose-500 to-red-600'
               }`}
             />
 
@@ -474,7 +487,11 @@ export default function ReportForm({ initialData }: ReportFormProps) {
               <div className="flex items-start gap-4">
                 <div
                   className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
-                    submitStatus === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    submitStatus === 'success'
+                      ? 'bg-green-100 text-green-700'
+                      : isBusyNotice
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-red-100 text-red-700'
                   }`}
                 >
                   {submitStatus === 'success' ? <Sparkles size={20} /> : <X size={20} />}
@@ -482,7 +499,11 @@ export default function ReportForm({ initialData }: ReportFormProps) {
 
                 <div className="min-w-0 flex-1">
                   <h3 className="text-base sm:text-lg font-bold tracking-tight">
-                    {submitStatus === 'success' ? 'Submission Received' : 'Submission Failed'}
+                    {submitStatus === 'success'
+                      ? 'Submission Received'
+                      : isBusyNotice
+                      ? 'Processing Queue Is Busy'
+                      : 'Submission Failed'}
                   </h3>
                   <p className="mt-2 text-sm sm:text-base font-medium leading-relaxed text-gray-700">{submitMessage}</p>
                 </div>
@@ -494,10 +515,16 @@ export default function ReportForm({ initialData }: ReportFormProps) {
                 className={`mt-6 w-full rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
                   submitStatus === 'success'
                     ? 'bg-green-600 text-white hover:bg-green-700'
+                    : isBusyNotice
+                    ? 'bg-amber-500 text-white hover:bg-amber-600'
                     : 'bg-red-600 text-white hover:bg-red-700'
                 }`}
               >
-                {submitStatus === 'success' ? 'Great, thanks' : 'Try again'}
+                {submitStatus === 'success'
+                  ? 'Great, thanks'
+                  : isBusyNotice
+                  ? 'Okay, retry later'
+                  : 'Try again'}
               </button>
             </div>
           </div>
