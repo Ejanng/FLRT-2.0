@@ -82,10 +82,17 @@ export const reportsApi = {
       method: 'POST',
       body: JSON.stringify({ admin_notes: adminNotes, admin_id: adminId }),
     }),
-  submit: (formData: FormData) => fetch(`${API_BASE_URL}/reports/report-item`, {
-    method: 'POST',
-    body: formData,
-  }).then(r => r.json()),
+  submit: async (formData: FormData) => {
+    const response = await fetch(`${API_BASE_URL}/reports/report-item`, {
+      method: 'POST',
+      body: formData,
+    })
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP error! status: ${response.status}`)
+    }
+    return data
+  },
 };
 
 export const claimsApi = {

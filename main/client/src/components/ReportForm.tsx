@@ -8,6 +8,15 @@ import MatchResultCard from './MatchResultCard'
 import { reportsApi } from '../services/api'
 import { validateImageFile } from '../utils/fileValidation'
 
+const isSiftBusyError = (message: string) => {
+  const normalized = (message || '').toLowerCase()
+  return (
+    normalized.includes('sift busy') ||
+    normalized.includes('queue is full') ||
+    normalized.includes('job timeout')
+  )
+}
+
 interface ReportFormData {
   itemName: string
   description: string
@@ -113,8 +122,13 @@ export default function ReportForm({ initialData }: ReportFormProps) {
       }
     },
     onError: (error: any) => {
+      const rawMessage = error?.message || 'Failed to submit report'
+      const friendlyMessage = isSiftBusyError(rawMessage)
+        ? 'Your report was received, but image matching is currently busy. Please wait a moment and try again for automatic matching.'
+        : rawMessage
+
       setSubmitStatus('error')
-      setSubmitMessage(error.message || 'Failed to submit report')
+      setSubmitMessage(friendlyMessage)
       setShowStatusPopup(true)
     },
   })
