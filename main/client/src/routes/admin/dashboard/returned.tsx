@@ -16,6 +16,7 @@ interface Report {
   date_reported: string
   status: string
   image?: string
+  public_match_link?: string | null
   category?: string
 }
 
@@ -93,6 +94,8 @@ function ReturnedReportsPage() {
     if (imagePath.startsWith('http')) return imagePath
     return `${API_BASE_URL}/reports/images/${encodeURIComponent(imagePath)}`
   }
+
+  const getReportDisplayImage = (report: Report) => report.public_match_link || report.image || ''
 
   return (
     <div className="min-h-screen p-3 sm:p-6">
@@ -276,10 +279,10 @@ function ReturnedReportsPage() {
             </div>
 
             <div className="space-y-4">
-              {selectedReport.image && (
+              {getReportDisplayImage(selectedReport) && (
                 <div className="rounded-xl overflow-hidden">
                   <img
-                    src={getImageUrl(selectedReport.image)}
+                    src={getImageUrl(getReportDisplayImage(selectedReport))}
                     alt={selectedReport.item_name}
                     className="w-full h-48 object-cover"
                     onError={(e) => {

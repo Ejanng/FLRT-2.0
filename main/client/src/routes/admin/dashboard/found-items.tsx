@@ -244,13 +244,17 @@ function FoundItemsPage() {
                   <div className="flex flex-col sm:flex-row gap-4">
                     {/* Item Image */}
                     <div className="w-full sm:w-32 h-32 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                      {item.image && (
+                      {item.image ? (
                         <img 
                           src={getImageUrl(item.image)} 
                           alt={item.item_name}
                           className="w-full h-full object-cover"
                           onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/128x128?text=No+Image')}
                         />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
+                          No Image
+                        </div>
                       )}
                     </div>
 
@@ -385,16 +389,20 @@ function FoundItemsPage() {
               )}
 
               {/* Item Image */}
-              {selectedItem.image && (
-                <div className="rounded-lg overflow-hidden bg-gray-100">
+              <div className="rounded-lg overflow-hidden bg-gray-100">
+                {selectedItem.image ? (
                   <img 
                     src={getImageUrl(selectedItem.image)} 
                     alt={selectedItem.item_name}
                     className="w-full h-64 object-cover"
                     onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/400x300?text=No+Image')}
                   />
-                </div>
-              )}
+                ) : (
+                  <div className="w-full h-64 flex items-center justify-center text-gray-500">
+                    No Image
+                  </div>
+                )}
+              </div>
 
               {/* Item Information */}
               <div className="space-y-4">

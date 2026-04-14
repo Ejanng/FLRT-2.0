@@ -26,6 +26,8 @@ interface Report {
   location: string
   date_reported: string
   status: string
+  image?: string | null
+  public_match_link?: string | null
 }
 
 interface WebhookTestStatus {
@@ -132,6 +134,29 @@ function DashboardPage() {
       new Date(report.date_reported).toLocaleDateString().toLowerCase().includes(q)
     )
   })
+
+  const getReportDisplayImage = (report: Report) => report.public_match_link || report.image || ''
+
+  const getImageUrl = (imagePath: string) => {
+    if (!imagePath) return 'https://via.placeholder.com/96x72?text=No+Image'
+
+    if (imagePath.includes('drive.google.com')) {
+      const fileIdFromPath = imagePath.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1]
+      let fileIdFromQuery: string | null = null
+      try {
+        fileIdFromQuery = new URL(imagePath).searchParams.get('id')
+      } catch {
+        fileIdFromQuery = null
+      }
+      const fileId = fileIdFromPath || fileIdFromQuery
+      if (fileId) {
+        return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`
+      }
+    }
+
+    if (imagePath.startsWith('http')) return imagePath
+    return `${API_BASE_URL}/reports/images/${encodeURIComponent(imagePath)}`
+  }
 
   const stats: DashboardStats = statsData?.stats || {
     total_reports: 0,
@@ -527,6 +552,7 @@ function DashboardPage() {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Image</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ID</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Item</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Location</th>
@@ -548,6 +574,24 @@ function DashboardPage() {
                 ) : (
                   reportsData?.map((report: Report) => (
                     <tr key={report.report_id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        {getReportDisplayImage(report) ? (
+                          <div className="w-16 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
+                            <img
+                              src={getImageUrl(getReportDisplayImage(report))}
+                              alt={report.item_name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/96x72?text=No+Image'
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-16 h-12 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center text-[10px] text-gray-500">
+                            No Image
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">
                         #{report.report_id}
                       </td>

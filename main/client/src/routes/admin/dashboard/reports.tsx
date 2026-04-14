@@ -17,13 +17,13 @@ interface Report {
   date_reported: string
   status: string
   image?: string
+  public_match_link?: string | null
   category?: string
   finder_name?: string
   finder_contact_info?: string
   finder_student_number?: string
   is_found_report?: boolean
   coordination_status?: 'pending' | 'contacted' | 'verified'
-  public_match_link?: string | null
   has_pending_claim?: boolean
   pending_claim_status?: string | null
   coordination_admin_id?: number | null
@@ -287,6 +287,8 @@ function ReportsPage() {
     return `${API_BASE_URL}/reports/images/${encodeURIComponent(imagePath)}`
   }
 
+  const getReportDisplayImage = (report: Report) => report.public_match_link || report.image || ''
+
   const getDrivePreviewUrl = (url: string) => {
     if (!url) return ''
     if (url.includes('drive.google.com')) {
@@ -461,10 +463,10 @@ function ReportsPage() {
             )}
 
             <div className="space-y-4 mb-6">
-              {selectedReport.image && (
+              {getReportDisplayImage(selectedReport) && (
                 <div className="rounded-xl overflow-hidden">
                   <img 
-                    src={getImageUrl(selectedReport.image)}
+                    src={getImageUrl(getReportDisplayImage(selectedReport))}
                     alt={selectedReport.item_name}
                     className="w-full h-48 object-cover"
                     onError={(e) => {

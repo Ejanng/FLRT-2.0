@@ -25,6 +25,7 @@ interface Claim {
     location: string
     image?: string
     status?: string
+    public_match_link?: string | null
     finder?: {
       name?: string
       student_number?: string
@@ -142,6 +143,8 @@ function VerifyClaimsPage() {
     return `${API_BASE_URL}/reports/images/${encodeURIComponent(imagePath)}`
   }
 
+  const getReportDisplayImage = (report?: Claim['report']) => report?.public_match_link || report?.image || ''
+
   return (
     <div className="min-h-screen p-3 sm:p-6">
       <div className="max-w-7xl mx-auto">
@@ -218,12 +221,15 @@ function VerifyClaimsPage() {
                   key={claim.claim_id} 
                   className="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-lg transition-shadow"
                 >
+                  {(() => {
+                    const reportImage = getReportDisplayImage(claim.report)
+                    return (
                   <div className="flex flex-col sm:flex-row gap-4">
                     <div className="w-full sm:w-32 h-32 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                      {claim.report?.image ? (
+                      {reportImage ? (
                         <img 
-                          src={getImageUrl(claim.report.image)}
-                          alt={claim.report.item_name}
+                          src={getImageUrl(reportImage)}
+                          alt={claim.report?.item_name || 'Report image'}
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=No+Image'
@@ -276,7 +282,9 @@ function VerifyClaimsPage() {
                         </button>
                       </div>
                     </div>
-                  </div>
+                    </div>
+                    )
+                  })()}
                 </div>
               ))}
             </div>
@@ -339,16 +347,21 @@ function VerifyClaimsPage() {
                   Item Details
                 </h3>
                 
-                {selectedClaim.report?.image && (
+                {getReportDisplayImage(selectedClaim.report) && (
                   <div className="rounded-xl overflow-hidden">
+                    {(() => {
+                      const reportImage = getReportDisplayImage(selectedClaim.report)
+                      return (
                     <img 
-                      src={getImageUrl(selectedClaim.report.image)}
-                      alt={selectedClaim.report.item_name}
+                      src={getImageUrl(reportImage)}
+                      alt={selectedClaim.report?.item_name || 'Report image'}
                       className="w-full h-48 object-cover"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x200?text=No+Image'
                       }}
                     />
+                      )
+                    })()}
                   </div>
                 )}
                 
