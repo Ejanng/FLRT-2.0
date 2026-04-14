@@ -13,6 +13,8 @@ from found_items.services import (
 )
 from auth.token import decode_access_token
 from datetime import datetime, timezone
+from core.upload_validation import validate_uploaded_image
+from werkzeug.utils import secure_filename
 import os
 
 found_items_bp = Blueprint('found_items', __name__)
@@ -76,10 +78,15 @@ def submit_found_item():
         
         # Handle image upload
         image_path = None
+        is_valid_image, image_error = validate_uploaded_image(image_file)
+        if not is_valid_image:
+            return jsonify({"error": image_error}), 400
+
         if image_file and image_file.filename:
             uploads_dir = '/tmp/found_items'
             os.makedirs(uploads_dir, exist_ok=True)
-            filename = f"found_item_{datetime.now().timestamp()}_{image_file.filename}"
+            safe_name = secure_filename(image_file.filename)
+            filename = f"found_item_{datetime.now().timestamp()}_{safe_name}"
             image_path = os.path.join(uploads_dir, filename)
             image_file.save(image_path)
         

@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { User, IdCard, Mail, FileText, ArrowLeft, Loader2, CheckCircle, Upload, X } from 'lucide-react'
 import { claimsApi } from '../services/api'
+import { validateImageFile } from '../utils/fileValidation'
 
 interface FoundFormProps {
   reportId: string
@@ -44,7 +45,21 @@ export default function FoundForm({ reportId, itemName, location, date, category
     const file = e.target.files?.[0]
     if (!file) return
 
+    const fileError = validateImageFile(file)
+    if (fileError) {
+      setPhotoFile(null)
+      setPhotoPreview('')
+      setErrors((prev) => ({ ...prev, photo: fileError }))
+      e.target.value = ''
+      return
+    }
+
     setPhotoFile(file)
+    setErrors((prev) => {
+      const next = { ...prev }
+      delete next.photo
+      return next
+    })
     const reader = new FileReader()
     reader.onloadend = () => setPhotoPreview(reader.result as string)
     reader.readAsDataURL(file)
@@ -209,11 +224,12 @@ export default function FoundForm({ reportId, itemName, location, date, category
                 )}
                 <input
                   type="file"
-                  accept="image/*"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                   onChange={handlePhotoChange}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
               </div>
+              {errors.photo && <p className="text-red-500 text-xs mt-1">{errors.photo}</p>}
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 pt-4">

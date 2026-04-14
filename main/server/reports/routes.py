@@ -14,6 +14,8 @@ from found_items.services import create_found_item
 from sift.services import upload_report_image_by_status
 from auth.decorators import auth_required, admin_required
 from core.notifications import send_discord_notification
+from core.upload_validation import validate_uploaded_image
+from werkzeug.utils import secure_filename
 import os
 
 report_bp = Blueprint('reports', __name__)
@@ -70,10 +72,15 @@ def report_item():
         # Handle image file upload
         image_file = request.files.get('image')
         image_url = None
+
+        is_valid_image, image_error = validate_uploaded_image(image_file)
+        if not is_valid_image:
+            return jsonify({"error": image_error}), 400
         
         if image_file and image_file.filename:
             # Save to temp location
-            temp_path = f"/tmp/{image_file.filename}"
+            safe_name = secure_filename(image_file.filename)
+            temp_path = f"/tmp/{safe_name}"
             image_file.save(temp_path)
 
             # Upload to Google Drive first (UI data source should use this)

@@ -6,6 +6,7 @@ import { Upload, X, Loader2, Camera, MapPin, Calendar, FileText, Sparkles } from
 import PersonalInfoModal from './PersonalInfoModal'
 import MatchResultCard from './MatchResultCard'
 import { reportsApi } from '../services/api'
+import { validateImageFile } from '../utils/fileValidation'
 
 interface ReportFormData {
   itemName: string
@@ -121,6 +122,16 @@ export default function ReportForm({ initialData }: ReportFormProps) {
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      const fileError = validateImageFile(file)
+      if (fileError) {
+        setSubmitStatus('error')
+        setSubmitMessage(fileError)
+        setFormData((prev) => ({ ...prev, photo: null }))
+        setPhotoPreview('')
+        e.target.value = ''
+        return
+      }
+
       setFormData((prev) => ({ ...prev, photo: file }))
       const reader = new FileReader()
       reader.onloadend = () => setPhotoPreview(reader.result as string)
@@ -131,12 +142,21 @@ export default function ReportForm({ initialData }: ReportFormProps) {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     const file = e.dataTransfer.files?.[0]
-    if (file?.type.startsWith('image/')) {
-      setFormData((prev) => ({ ...prev, photo: file }))
-      const reader = new FileReader()
-      reader.onloadend = () => setPhotoPreview(reader.result as string)
-      reader.readAsDataURL(file)
+    if (!file) return
+
+    const fileError = validateImageFile(file)
+    if (fileError) {
+      setSubmitStatus('error')
+      setSubmitMessage(fileError)
+      setFormData((prev) => ({ ...prev, photo: null }))
+      setPhotoPreview('')
+      return
     }
+
+    setFormData((prev) => ({ ...prev, photo: file }))
+    const reader = new FileReader()
+    reader.onloadend = () => setPhotoPreview(reader.result as string)
+    reader.readAsDataURL(file)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -374,7 +394,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
             )}
             <input
               type="file"
-              accept="image/*"
+              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
               onChange={handlePhotoUpload}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />

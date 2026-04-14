@@ -1,6 +1,6 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import { useState } from 'react'
-import { Menu, X, Home, FileText, Search, Info } from 'lucide-react'
+import { Menu, X, Home, FileText, Search, Info, Shield } from 'lucide-react'
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false)
@@ -19,6 +19,7 @@ export default function Header() {
     { to: '/report', label: 'Report', icon: FileText },
     { to: '/claim', label: 'Find', icon: Search },
     { to: '/about', label: 'About', icon: Info },
+    { to: '/admin', label: 'Admin', icon: Shield },
   ]
 
   return (
@@ -46,13 +47,37 @@ export default function Header() {
                   key={item.to}
                   to={item.to}
                   className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
-                    active
+                    item.to === '/admin'
+                      ? active
+                        ? 'bg-gradient-to-r from-[#f5e102] to-[#f3d400] text-gray-900 shadow'
+                        : 'border border-[#0217f7]/30 text-[#0217f7] hover:bg-[#0217f7]/10'
+                      : active
                         ? 'bg-gradient-to-r from-[#0217f7] to-[#010bb3] text-white'
-                      : 'text-gray-700 hover:bg-[#0217f7]/10'
+                        : 'text-gray-700 hover:bg-[#0217f7]/10'
                   }`}
                 >
-                  <Icon size={18} className={active ? 'text-white/90' : ''} />
+                  <Icon
+                    size={18}
+                    className={
+                      item.to === '/admin'
+                        ? active
+                          ? 'text-gray-900'
+                          : 'text-[#0217f7]'
+                        : active
+                          ? 'text-white/90'
+                          : ''
+                    }
+                  />
                   {item.label}
+                  {item.to === '/admin' && (
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold tracking-wide ${
+                        active ? 'bg-gray-900/10 text-gray-900' : 'bg-[#0217f7]/10 text-[#0217f7]'
+                      }`}
+                    >
+                      LOCK
+                    </span>
+                  )}
                 </Link>
               )
             })}
@@ -90,13 +115,37 @@ export default function Header() {
                     to={item.to}
                     onClick={() => setIsOpen(false)}
                     className={`flex items-center gap-3 px-4 py-3 rounded-xl ${
-                      active
+                      item.to === '/admin'
+                        ? active
+                          ? 'bg-gradient-to-r from-[#f5e102] to-[#f3d400] text-gray-900 shadow'
+                          : 'border border-[#0217f7]/30 text-[#0217f7]'
+                        : active
                           ? 'bg-gradient-to-r from-[#0217f7] to-[#010bb3] text-white'
-                        : 'text-gray-700'
+                          : 'text-gray-700'
                     }`}
                   >
-                    <Icon size={20} className={active ? 'text-white/90' : ''} />
+                    <Icon
+                      size={20}
+                      className={
+                        item.to === '/admin'
+                          ? active
+                            ? 'text-gray-900'
+                            : 'text-[#0217f7]'
+                          : active
+                            ? 'text-white/90'
+                            : ''
+                      }
+                    />
                     {item.label}
+                    {item.to === '/admin' && (
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold tracking-wide ml-1 ${
+                          active ? 'bg-gray-900/10 text-gray-900' : 'bg-[#0217f7]/10 text-[#0217f7]'
+                        }`}
+                      >
+                        LOCK
+                      </span>
+                    )}
                   </Link>
                 )
               })}

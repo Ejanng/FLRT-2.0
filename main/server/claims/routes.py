@@ -7,6 +7,8 @@ from core.extensions import db
 from datetime import datetime, timezone
 from sift.services import upload_manual_claim_image, archive_returned_item_images
 from core.notifications import send_discord_notification
+from core.upload_validation import validate_uploaded_image
+from werkzeug.utils import secure_filename
 
 claim_bp = Blueprint('claims', __name__)
 
@@ -30,8 +32,13 @@ def submit_claim():
         
         # Handle image upload
         image_url = None
+        is_valid_image, image_error = validate_uploaded_image(image_file)
+        if not is_valid_image:
+            return jsonify({"error": image_error}), 400
+
         if image_file and image_file.filename:
-            temp_path = f"/tmp/claim_{datetime.now().timestamp()}_{image_file.filename}"
+            safe_name = secure_filename(image_file.filename)
+            temp_path = f"/tmp/claim_{datetime.now().timestamp()}_{safe_name}"
             image_file.save(temp_path)
             upload_result = upload_manual_claim_image(temp_path, filename_prefix='manual_claim_proof')
             if upload_result.get('success'):

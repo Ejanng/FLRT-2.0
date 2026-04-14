@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Upload, X, User, IdCard, Mail, FileText, ArrowLeft, Loader2, CheckCircle } from 'lucide-react'
 import { claimsApi, foundItemsApi } from '../../services/api'
+import { validateImageFile } from '../../utils/fileValidation'
 
 type SearchParams = {
   id: string
@@ -65,7 +66,21 @@ function ClaimFormPage() {
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      const fileError = validateImageFile(file)
+      if (fileError) {
+        setPhotoFile(null)
+        setPhotoPreview('')
+        setErrors((prev) => ({ ...prev, photo: fileError }))
+        e.target.value = ''
+        return
+      }
+
       setPhotoFile(file)
+      setErrors((prev) => {
+        const next = { ...prev }
+        delete next.photo
+        return next
+      })
       const reader = new FileReader()
       reader.onloadend = () => setPhotoPreview(reader.result as string)
       reader.readAsDataURL(file)
@@ -250,7 +265,7 @@ function ClaimFormPage() {
                 )}
                 <input 
                   type="file" 
-                  accept="image/*" 
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png" 
                   onChange={handlePhotoChange}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />

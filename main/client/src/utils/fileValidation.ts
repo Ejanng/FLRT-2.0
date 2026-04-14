@@ -1,0 +1,18 @@
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png']
+const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png']
+
+export function validateImageFile(file: File): string | null {
+  const name = (file.name || '').toLowerCase()
+  const type = (file.type || '').toLowerCase()
+
+  const hasAllowedExtension = ALLOWED_IMAGE_EXTENSIONS.some((ext) => name.endsWith(ext))
+  if (!hasAllowedExtension) {
+    return 'Only JPG and PNG image files are allowed.'
+  }
+
+  if (!ALLOWED_IMAGE_TYPES.includes(type)) {
+    return 'Invalid file type. Please upload a valid JPG or PNG image.'
+  }
+
+  return null
+}
