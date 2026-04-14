@@ -15,6 +15,7 @@ interface Report {
   description: string
   location: string
   date_reported: string
+  date_lost?: string | null
   status: string
   image?: string
   public_match_link?: string | null
@@ -82,13 +83,19 @@ function ReportsPage() {
     const dateFormatted = report.date_reported
       ? new Date(report.date_reported).toLocaleDateString().toLowerCase()
       : ''
+    const dateLostRaw = String(report.date_lost || '').toLowerCase()
+    const dateLostFormatted = report.date_lost
+      ? new Date(report.date_lost).toLocaleDateString().toLowerCase()
+      : ''
 
     return (
       reportId.includes(q) ||
       itemName.includes(q) ||
       location.includes(q) ||
       dateRaw.includes(q) ||
-      dateFormatted.includes(q)
+      dateFormatted.includes(q) ||
+      dateLostRaw.includes(q) ||
+      dateLostFormatted.includes(q)
     )
   })
 
@@ -383,6 +390,11 @@ function ReportsPage() {
                   </tr>
                 ) : (
                   paginatedReports.map((report: Report) => (
+                    (() => {
+                      const displayDate = (report.status || '').toLowerCase().includes('lost') && report.date_lost
+                        ? report.date_lost
+                        : report.date_reported
+                      return (
                     <tr key={report.report_id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">
                         #{report.report_id}
@@ -393,7 +405,7 @@ function ReportsPage() {
                       <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{report.description}</td>
                       <td className="px-4 py-3">{getStatusBadge(report.status)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
-                        {new Date(report.date_reported).toLocaleDateString()}
+                        {new Date(displayDate).toLocaleDateString()}
                       </td>
                       <td className="px-4 py-3">
                         <button
@@ -404,6 +416,8 @@ function ReportsPage() {
                         </button>
                       </td>
                     </tr>
+                      )
+                    })()
                   ))
                 )}
               </tbody>
@@ -490,9 +504,15 @@ function ReportsPage() {
                   <p className="font-semibold text-gray-900">{selectedReport.location}</p>
                 </div>
                 <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-gray-500 uppercase">Date</p>
+                  <p className="text-xs text-gray-500 uppercase">
+                    {(selectedReport.status || '').toLowerCase().includes('lost') ? 'Date Lost' : 'Date'}
+                  </p>
                   <p className="font-semibold text-gray-900">
-                    {new Date(selectedReport.date_reported).toLocaleDateString()}
+                    {new Date(
+                      (selectedReport.status || '').toLowerCase().includes('lost') && selectedReport.date_lost
+                        ? selectedReport.date_lost
+                        : selectedReport.date_reported
+                    ).toLocaleDateString()}
                   </p>
                 </div>
               </div>

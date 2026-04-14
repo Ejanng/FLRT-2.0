@@ -13,6 +13,7 @@ interface LostItem {
   description: string
   location: string
   date_reported: string
+  date_lost?: string | null
   category: string
   status: string
   image: string
@@ -156,6 +157,11 @@ function ClaimantPage() {
                   </div>
                   <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-1">{item.item_name}</h3>
                   <p className="text-sm text-gray-700 mb-3 line-clamp-2">{item.description}</p>
+                  {(() => {
+                    const displayDate = item.status === 'lost' && item.date_lost
+                      ? item.date_lost
+                      : item.date_reported
+                    return (
                   <div className="space-y-1 text-xs text-gray-600 mb-4">
                     <div className="flex items-center gap-2">
                       <MapPin size={14} className="text-[#0217f7]" /> 
@@ -163,23 +169,26 @@ function ClaimantPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Calendar size={14} className="text-[#0217f7]" /> 
-                      {new Date(item.date_reported).toLocaleDateString()}
+                      {new Date(displayDate).toLocaleDateString()}
                     </div>
                     <div className="flex items-center gap-2">
                       <Tag size={14} className="text-[#0217f7]" /> 
                       {item.category || 'Uncategorized'}
                     </div>
                   </div>
+                    )
+                  })()}
                   <button
                     onClick={() => {
                       if (item.status === 'lost') {
+                        const claimDate = item.date_lost || item.date_reported
                         navigate({
                           to: '/claim/claimForm',
                           search: {
                             id: item.report_id,
                             name: item.item_name,
                             location: item.location,
-                            date: item.date_reported,
+                            date: claimDate,
                             category: item.category,
                             mode: 'found',
                           },
