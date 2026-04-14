@@ -1,5 +1,5 @@
 // client/src/components/ReportForm.tsx
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Upload, X, Loader2, Camera, MapPin, Calendar, FileText, Sparkles } from 'lucide-react'
@@ -15,6 +15,14 @@ const isSiftBusyError = (message: string) => {
     normalized.includes('queue is full') ||
     normalized.includes('job timeout')
   )
+}
+
+const getTodayDateString = () => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 interface ReportFormData {
@@ -70,6 +78,12 @@ export default function ReportForm({ initialData }: ReportFormProps) {
   const [showModal, setShowModal] = useState(false)
   const [matchResult, setMatchResult] = useState<any>(null)
   const [pendingExistingReportId, setPendingExistingReportId] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (formData.status === 'found' && !formData.date) {
+      setFormData((prev) => ({ ...prev, date: getTodayDateString() }))
+    }
+  }, [formData.status, formData.date])
 
   const submitMutation = useMutation({
     mutationFn: (data: FormData) => reportsApi.submit(data),
@@ -140,6 +154,10 @@ export default function ReportForm({ initialData }: ReportFormProps) {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
+    if (name === 'status' && value === 'found') {
+      setFormData((prev) => ({ ...prev, status: 'found', date: getTodayDateString() }))
+      return
+    }
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -356,6 +374,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
               value={formData.date}
               onChange={handleInputChange}
               required
+              disabled={formData.status === 'found'}
               className="input-field"
             />
           </div>
@@ -363,13 +382,19 @@ export default function ReportForm({ initialData }: ReportFormProps) {
           <div>
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
               <Calendar size={18} className="text-[#0217f7]" />
-              Time <span className="text-gray-600 text-xs">(Optional)</span>
+              Time{' '}
+              {formData.status === 'lost' ? (
+                <span className="text-red-500">*</span>
+              ) : (
+                <span className="text-gray-600 text-xs">(Optional)</span>
+              )}
             </label>
             <input
               type="time"
               name="time"
               value={formData.time}
               onChange={handleInputChange}
+              required={formData.status === 'lost'}
               className="input-field"
             />
           </div>
