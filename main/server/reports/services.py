@@ -4,6 +4,18 @@ from models.found_items_model import FoundItems
 from sift.services import process_image_for_report, archive_returned_item_images
 from datetime import datetime, timezone
 
+
+def _is_sift_busy_error(error_text: str) -> bool:
+    normalized = (error_text or '').strip().lower()
+    if not normalized:
+        return False
+
+    return (
+        'sift busy:' in normalized
+        or 'queue is full' in normalized
+        or 'job timeout' in normalized
+    )
+
 def submit_report(data, image_url=None):
     """Create a new report."""
     final_image_url = image_url or data.get('image')
@@ -188,7 +200,7 @@ def process_report_with_image_url(image_url, data, new_report):
 
     if not result.get('success'):
         error_text = (result.get('error') or '').strip()
-        if error_text.lower().startswith('sift busy:'):
+        if _is_sift_busy_error(error_text):
             return None, error_text, "Busy", None
         return None, "No match found in database. Report recorded for manual review.", "No Match", None
     

@@ -46,6 +46,8 @@ _SIFT_WORKER_POOL_SIZE = max(1, int(os.getenv('SIFT_WORKER_POOL_SIZE', str(_SIFT
 _SIFT_QUEUE_SEMAPHORE = threading.BoundedSemaphore(_SIFT_QUEUE_MAX_SIZE)
 _SIFT_JOB_EXECUTOR = ThreadPoolExecutor(max_workers=_SIFT_WORKER_POOL_SIZE, thread_name_prefix='sift-job')
 _SIFT_VERBOSE_LOGS = os.getenv('SIFT_VERBOSE_LOGS', '0').strip().lower() in ('1', 'true', 'yes', 'on')
+_SIFT_QUEUE_LOCK = threading.Lock()
+_SIFT_QUEUE_IN_USE = 0
 
 
 def _log(message: str, force: bool = False):
@@ -109,15 +111,22 @@ def _run_sift_job(job_name: str, func, *args, **kwargs):
     - fixed worker pool (controlled CPU usage)
     - configurable wait and execution timeout
     """
+    global _SIFT_QUEUE_IN_USE
+
     acquired = _SIFT_QUEUE_SEMAPHORE.acquire(timeout=_SIFT_JOB_WAIT_TIMEOUT_SECONDS)
     if not acquired:
+        with _SIFT_QUEUE_LOCK:
+            queue_in_use = _SIFT_QUEUE_IN_USE
         raise RuntimeError(
             "SIFT busy: queue is full. Try again shortly. "
             f"(workers={_SIFT_WORKER_POOL_SIZE}, queue_max={_SIFT_QUEUE_MAX_SIZE}, "
-            f"wait_timeout={_SIFT_JOB_WAIT_TIMEOUT_SECONDS}s, job={job_name})"
+            f"in_use={queue_in_use}, wait_timeout={_SIFT_JOB_WAIT_TIMEOUT_SECONDS}s, job={job_name})"
         )
 
     try:
+        with _SIFT_QUEUE_LOCK:
+            _SIFT_QUEUE_IN_USE += 1
+
         future = _SIFT_JOB_EXECUTOR.submit(func, *args, **kwargs)
         try:
             return future.result(timeout=_SIFT_JOB_EXEC_TIMEOUT_SECONDS)
@@ -127,6 +136,8 @@ def _run_sift_job(job_name: str, func, *args, **kwargs):
                 f"SIFT job timeout after {_SIFT_JOB_EXEC_TIMEOUT_SECONDS}s (job={job_name})"
             )
     finally:
+        with _SIFT_QUEUE_LOCK:
+            _SIFT_QUEUE_IN_USE = max(0, _SIFT_QUEUE_IN_USE - 1)
         _SIFT_QUEUE_SEMAPHORE.release()
 
 
