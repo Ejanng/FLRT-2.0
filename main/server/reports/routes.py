@@ -30,7 +30,8 @@ def report_item():
         # Get form data
         item_name = request.form.get('item_name')
         description = request.form.get('description')
-        status = request.form.get('status')
+        status_raw = request.form.get('status')
+        status = (status_raw or '').strip().lower()
         location = request.form.get('location')
         date = request.form.get('date')
         time = request.form.get('time')
@@ -153,7 +154,8 @@ def report_item():
                 return jsonify({
                     "message": message,
                     "report": new_report.to_json(),
-                    "new_pending_claim": new_claim.to_json()
+                    "new_pending_claim": new_claim.to_json(),
+                    "public_matched_image_link": new_claim.image,
                 }), 201
             elif process_result == "Incomplete Data":
                 return jsonify({

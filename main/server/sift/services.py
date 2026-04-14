@@ -130,7 +130,7 @@ def _run_sift_job(job_name: str, func, *args, **kwargs):
         _SIFT_QUEUE_SEMAPHORE.release()
 
 
-def _ensure_trained_database(target_status: str, auto_build: bool = True):
+def _ensure_trained_database(target_status: str, auto_build: bool = True, force_refresh: bool = False):
     """
     Load status-specific database.
     
@@ -143,10 +143,13 @@ def _ensure_trained_database(target_status: str, auto_build: bool = True):
         (database, db_file) tuple or (None, db_file) if auto_build=False and DB missing
     """
     db_file = _db_file_for_target_status(target_status)
-    _log(f"[DB LOAD] status={target_status} db={db_file} auto_build={auto_build}")
+    _log(f"[DB LOAD] status={target_status} db={db_file} auto_build={auto_build} force_refresh={force_refresh}")
+
+    if force_refresh and target_status in _AUTO_BUILD_EMPTY_ATTEMPTS:
+        _AUTO_BUILD_EMPTY_ATTEMPTS.discard(target_status)
 
     with _sift_db_context(db_file):
-        if os.path.exists(db_file):
+        if os.path.exists(db_file) and not force_refresh:
             _log(f"[DB LOAD] existing db file: {db_file}")
             database = sift.load_database()
             if database is not None:
@@ -384,7 +387,7 @@ def process_image_for_report(image_url, report_status):
         def _job():
             # Auto-build target DB only when missing/corrupt
             try:
-                database, db_file = _ensure_trained_database(target_status, auto_build=True)
+                database, db_file = _ensure_trained_database(target_status, auto_build=True, force_refresh=True)
             except Exception as db_e:
                 _log(f"[MATCH ERROR] database loading failed: {db_e}", force=True)
                 return {
@@ -759,7 +762,30 @@ def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder
         try:
             # Load and prepare image
             try:
-                image_array, source_type = sift.load_image_from_source(image_source)
+                if isinstance(image_source, str) and os.path.isfile(image_source):
+                    source_type = 'local'
+                    _, ext = os.path.splitext(image_source)
+                    safe_ext = ext.lower() if ext else '.jpg'
+                    if safe_ext not in ('.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff'):
+                        safe_ext = '.jpg'
+                    upload_result = sift.save_file_to_gdrive(
+                        image_source,
+                        f"{filename_prefix}{safe_ext}",
+                        folder_id,
+                        add_timestamp=True,
+                        max_retries=2,
+                    )
+                else:
+                    image_array, source_type = sift.load_image_for_upload(image_source)
+
+                    # Upload to Google Drive (array path for URL/GDrive sources)
+                    upload_result = sift.save_image_to_gdrive(
+                        image_array,
+                        f"{filename_prefix}.jpg",
+                        folder_id,
+                        add_timestamp=True,
+                        max_retries=2
+                    )
             except Exception as load_e:
                 sift.log_audit_event(
                     'gdrive_upload_wrapper_error',
@@ -772,15 +798,6 @@ def upload_image_to_gdrive(image_source, filename_prefix="report_upload", folder
                     "success": False,
                     "error": f"Failed to load image: {load_e}"
                 }
-            
-            # Upload to Google Drive
-            upload_result = sift.save_image_to_gdrive(
-                image_array,
-                f"{filename_prefix}.jpg",
-                folder_id,
-                add_timestamp=True,
-                max_retries=2
-            )
             
             if upload_result.get('success'):
                 sift.log_audit_event(

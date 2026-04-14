@@ -2,6 +2,7 @@ import argparse
 import base64
 import io
 import json
+import mimetypes
 import os
 import pickle
 import re
@@ -14,7 +15,10 @@ from typing import Any, Dict, List, Optional
 import cv2
 import numpy as np
 import requests
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from google.oauth2 import service_account
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.errors import HttpError
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
@@ -39,6 +43,19 @@ GDRIVE_SERVICE_ACCOUNT_FILE = os.getenv(
     'GOOGLE_SERVICE_ACCOUNT_FILE',
     os.path.join(RES_DIR, 'credentials.json'),
 )
+GDRIVE_OAUTH_CLIENT_SECRET_FILE = os.getenv(
+    'GOOGLE_OAUTH_CLIENT_SECRET_FILE',
+    os.path.join(RES_DIR, 'client_secret.json'),
+)
+GDRIVE_OAUTH_TOKEN_FILE = os.getenv(
+    'GOOGLE_OAUTH_TOKEN_FILE',
+    os.path.join(RES_DIR, 'token.pickle'),
+)
+GDRIVE_AUTH_MODE = os.getenv('GDRIVE_AUTH_MODE', 'oauth').strip().lower()
+ALLOW_OAUTH_INTERACTIVE_LOGIN = os.getenv(
+    'GOOGLE_OAUTH_INTERACTIVE_LOGIN',
+    '0',
+).strip().lower() in ('1', 'true', 'yes', 'on')
 DB_FILE = os.path.join(RES_DIR, 'sift_database.pkl')
 IMAGE_DIR = os.path.join(RES_DIR, 'train')
 
@@ -47,6 +64,7 @@ SCOPES = ['https://www.googleapis.com/auth/drive']
 
 _DRIVE_SERVICE = None
 _DRIVE_ACCOUNT_LOGGED = False
+_ACTIVE_DRIVE_AUTH_MODE = None
 
 _MATCH_WORKERS = max(1, int(os.getenv('SIFT_MATCH_WORKERS', '1')))
 _DB_ENTRY_CACHE_KEY = None
@@ -136,6 +154,36 @@ def _resolve_service_account_file_path(configured_path: str) -> Optional[str]:
     return None
 
 
+def _resolve_oauth_file_path(configured_path: str) -> Optional[str]:
+    """Resolve OAuth token/client-secret path across common run locations."""
+    if not configured_path:
+        return None
+
+    expanded = os.path.expanduser(configured_path.strip())
+    if not expanded:
+        return None
+
+    candidates = []
+    if os.path.isabs(expanded):
+        candidates.append(expanded)
+    else:
+        candidates.extend([
+            os.path.abspath(expanded),
+            os.path.abspath(os.path.join(SERVER_DIR, expanded)),
+            os.path.abspath(os.path.join(WORKSPACE_DIR, expanded)),
+        ])
+
+    seen = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if os.path.exists(candidate):
+            return candidate
+
+    return None
+
+
 def _load_service_account_credentials():
     """Load service account credentials from env JSON/base64 or JSON file path."""
     json_text = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON', '').strip()
@@ -180,6 +228,96 @@ def _load_service_account_credentials():
     return None
 
 
+def _load_oauth_credentials() -> Optional[Credentials]:
+    """Load OAuth user credentials from token pickle and refresh when needed."""
+    return _load_oauth_credentials_with_options(allow_interactive=ALLOW_OAUTH_INTERACTIVE_LOGIN)
+
+
+def _load_oauth_credentials_with_options(allow_interactive: bool) -> Optional[Credentials]:
+    """Load OAuth user credentials; optionally allow interactive browser login."""
+    creds = None
+    token_b64 = os.getenv('GOOGLE_OAUTH_TOKEN_B64', '').strip()
+    token_file = _resolve_oauth_file_path(GDRIVE_OAUTH_TOKEN_FILE)
+
+    if token_b64:
+        try:
+            creds = pickle.loads(base64.b64decode(token_b64))
+        except Exception as e:
+            _log('OAuth token parse failed from GOOGLE_OAUTH_TOKEN_B64: ' + str(e), force=True)
+
+    if creds is None and token_file:
+        try:
+            with open(token_file, 'rb') as token:
+                creds = pickle.load(token)
+        except Exception as e:
+            _log(f"OAuth token load failed ({token_file}): {e}", force=True)
+
+    if creds and creds.expired and creds.refresh_token:
+        try:
+            creds.refresh(Request())
+            if token_file:
+                with open(token_file, 'wb') as token:
+                    pickle.dump(creds, token)
+        except Exception as e:
+            _log(f"OAuth token refresh failed: {e}", force=True)
+
+    if creds and creds.valid:
+        return creds
+
+    if not allow_interactive:
+        return None
+
+    client_secret_file = _resolve_oauth_file_path(GDRIVE_OAUTH_CLIENT_SECRET_FILE)
+    if not client_secret_file:
+        _log(
+            "OAuth client secret file not found for GOOGLE_OAUTH_CLIENT_SECRET_FILE="
+            f"{GDRIVE_OAUTH_CLIENT_SECRET_FILE}",
+            force=True,
+        )
+        return None
+
+    try:
+        flow = InstalledAppFlow.from_client_secrets_file(client_secret_file, scopes=SCOPES)
+        creds = flow.run_local_server(port=0)
+        token_target = token_file or os.path.abspath(GDRIVE_OAUTH_TOKEN_FILE)
+        os.makedirs(os.path.dirname(token_target), exist_ok=True)
+        with open(token_target, 'wb') as token:
+            pickle.dump(creds, token)
+        return creds
+    except Exception as e:
+        _log(f"OAuth interactive login failed: {e}", force=True)
+        return None
+
+
+def update_oauth_authentication(print_token_b64: bool = False) -> Dict[str, Any]:
+    """Refresh or create OAuth token using interactive login when needed."""
+    creds = _load_oauth_credentials_with_options(allow_interactive=True)
+    if creds is None:
+        raise RuntimeError(
+            "Unable to update OAuth authentication. "
+            "Verify GOOGLE_OAUTH_CLIENT_SECRET_FILE and try again."
+        )
+
+    service = build('drive', 'v3', credentials=creds)
+    about = service.about().get(fields='user(displayName,emailAddress)').execute()
+    user = about.get('user') or {}
+
+    token_file = _resolve_oauth_file_path(GDRIVE_OAUTH_TOKEN_FILE) or os.path.abspath(GDRIVE_OAUTH_TOKEN_FILE)
+    result = {
+        'success': True,
+        'auth_mode': 'oauth',
+        'token_file': token_file,
+        'email': user.get('emailAddress'),
+        'display_name': user.get('displayName'),
+    }
+
+    if print_token_b64:
+        with open(token_file, 'rb') as f:
+            result['token_b64'] = base64.b64encode(f.read()).decode('utf-8')
+
+    return result
+
+
 def _log_authenticated_google_account(service):
     global _DRIVE_ACCOUNT_LOGGED
     if _DRIVE_ACCOUNT_LOGGED:
@@ -199,21 +337,47 @@ def _log_authenticated_google_account(service):
 
 def get_drive_service():
     """
-    Authenticate Google Drive using service account only.
+    Authenticate Google Drive using OAuth user token or service account.
     """
-    global _DRIVE_SERVICE
+    global _DRIVE_SERVICE, _ACTIVE_DRIVE_AUTH_MODE
     if _DRIVE_SERVICE is not None:
         return _DRIVE_SERVICE
 
-    creds = _load_service_account_credentials()
+    auth_mode = GDRIVE_AUTH_MODE if GDRIVE_AUTH_MODE in ('oauth', 'service_account', 'auto') else 'oauth'
+    selected_mode = None
+    creds = None
+
+    if auth_mode in ('oauth', 'auto'):
+        creds = _load_oauth_credentials()
+        if creds is not None:
+            selected_mode = 'oauth'
+            _log("Using Google Drive OAuth token authentication", force=True)
+        elif auth_mode == 'oauth':
+            raise RuntimeError(
+                "Google Drive OAuth token credentials not found/valid. "
+                "Set GOOGLE_OAUTH_TOKEN_FILE to a valid token.pickle path "
+                "(and optionally GOOGLE_OAUTH_CLIENT_SECRET_FILE for refresh/login)."
+            )
+
+    if creds is None and auth_mode in ('service_account', 'auto'):
+        creds = _load_service_account_credentials()
+        if creds is not None:
+            selected_mode = 'service_account'
+            _log("Using Google Drive service account authentication", force=True)
+        elif auth_mode == 'service_account':
+            raise RuntimeError(
+                "Google Drive service-account credentials not found. "
+                "Set GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_SERVICE_ACCOUNT_JSON(_B64)."
+            )
+
     if creds is None:
         raise RuntimeError(
-            "Google Drive service-account credentials not found. "
-            "Set GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_SERVICE_ACCOUNT_JSON(_B64)."
+            "No Google Drive credentials available. "
+            "Provide OAuth token (recommended) or service-account credentials."
         )
 
     _DRIVE_SERVICE = build('drive', 'v3', credentials=creds)
-    _log("Using Google Drive service account authentication", force=True)
+    _ACTIVE_DRIVE_AUTH_MODE = selected_mode
     _log_authenticated_google_account(_DRIVE_SERVICE)
 
     try:
@@ -374,7 +538,7 @@ def validate_required_gdrive_folders(service):
             }
             continue
 
-        if not profile.get('is_shared_drive'):
+        if _ACTIVE_DRIVE_AUTH_MODE == 'service_account' and not profile.get('is_shared_drive'):
             folder_status[folder_name] = {
                 'status': 'failed',
                 'folder_id': folder_id,
@@ -395,7 +559,7 @@ def validate_required_gdrive_folders(service):
             'status': 'ready',
             'folder_id': folder_id,
             'configured_url': folder_url,
-            'is_shared_drive': True,
+            'is_shared_drive': bool(profile.get('is_shared_drive')),
             'drive_id': profile.get('drive_id'),
         }
     return folder_status
@@ -425,7 +589,7 @@ def list_images_in_folder(service, folder_id):
     return files
 
 
-def download_image_from_drive(service, file_id):
+def download_image_from_drive(service, file_id, color=False):
     try:
         request = service.files().get_media(fileId=file_id)
         fh = BytesIO()
@@ -437,7 +601,8 @@ def download_image_from_drive(service, file_id):
 
         fh.seek(0)
         img_array = np.frombuffer(fh.read(), np.uint8)
-        return cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
+        decode_flag = cv2.IMREAD_COLOR if color else cv2.IMREAD_GRAYSCALE
+        return cv2.imdecode(img_array, decode_flag)
     except Exception as e:
         _log(f"Failed to download image {file_id}: {e}", force=True)
         return None
@@ -491,6 +656,59 @@ def load_image_from_source(source):
         return img, 'url'
 
     img = cv2.imread(source, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise FileNotFoundError(f'Could not load local image: {source}')
+    return img, 'local'
+
+
+def load_image_for_upload(source):
+    """
+    Load image as color (BGR) from local path, URL, or Google Drive sharing link.
+    Returns: (image_array_bgr, source_type)
+    """
+    if not source:
+        raise ValueError('No source provided')
+
+    gdrive_file_id = extract_gdrive_file_id(source)
+
+    if gdrive_file_id and 'drive.google.com' in source:
+        direct_url = f'https://drive.google.com/uc?export=download&id={gdrive_file_id}'
+        try:
+            session = requests.Session()
+            response = session.get(direct_url, timeout=30, allow_redirects=True)
+
+            if 'confirm' in response.url or 'downloadWarning' in response.text:
+                for key, value in response.cookies.items():
+                    if 'download' in key.lower():
+                        response = session.get(f'{direct_url}&confirm={value}', timeout=30)
+                        break
+
+            response.raise_for_status()
+            if 'text/html' in response.headers.get('content-type', ''):
+                raise RuntimeError('Got HTML response instead of image')
+
+            img_array = np.frombuffer(response.content, np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            if img is not None:
+                return img, 'gdrive_direct'
+        except Exception:
+            # API fallback for protected/large files.
+            service = get_drive_service()
+            img = download_image_from_drive(service, gdrive_file_id, color=True)
+            if img is not None:
+                return img, 'gdrive_api'
+            raise RuntimeError('Failed to load Google Drive image')
+
+    if source.startswith(('http://', 'https://')):
+        response = requests.get(source, timeout=30)
+        response.raise_for_status()
+        img_array = np.frombuffer(response.content, np.uint8)
+        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+        if img is None:
+            raise RuntimeError('Could not decode image from URL')
+        return img, 'url'
+
+    img = cv2.imread(source, cv2.IMREAD_COLOR)
     if img is None:
         raise FileNotFoundError(f'Could not load local image: {source}')
     return img, 'local'
@@ -695,6 +913,129 @@ def _friendly_non_retryable_upload_error(exc: Exception) -> str:
     return str(exc)
 
 
+def save_bytes_to_gdrive(
+    file_bytes,
+    filename,
+    folder_id,
+    mime_type='application/octet-stream',
+    add_timestamp=True,
+    max_retries=3,
+):
+    """Upload raw bytes to Drive without image decoding/re-encoding."""
+    non_retryable_error = None
+
+    if not folder_id:
+        _audit_log('gdrive_upload_error', reason='missing_folder_id', filename=filename)
+        return {'success': False, 'error': 'No folder_id provided'}
+
+    try:
+        if add_timestamp:
+            name, ext = os.path.splitext(filename)
+            filename = f"{name}_{int(time.time())}{ext}"
+
+        if not file_bytes:
+            raise RuntimeError('No file bytes provided for upload')
+
+        service = get_drive_service()
+
+        target_profile = get_gdrive_folder_profile(service, folder_id, 'Upload Target')
+        if not target_profile.get('ok'):
+            raise RuntimeError(
+                f"Google Drive upload blocked: upload folder is unavailable ({target_profile.get('error')})."
+            )
+
+        if _ACTIVE_DRIVE_AUTH_MODE == 'service_account' and not target_profile.get('is_shared_drive'):
+            raise RuntimeError(
+                'Google Drive upload blocked: target folder is not in a Shared Drive. '
+                'Service-account uploads to non-shared-drive folders can fail with storage quota limits. '
+                'Move target folders into a Shared Drive or switch to OAuth/domain-wide delegation.'
+            )
+
+        file_metadata = {'name': filename, 'parents': [folder_id]}
+
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                media = MediaIoBaseUpload(io.BytesIO(file_bytes), mimetype=mime_type, resumable=True)
+                file = service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields='id,name,webViewLink,mimeType,parents',
+                    supportsAllDrives=True,
+                ).execute()
+
+                if not file.get('id'):
+                    raise RuntimeError('Upload returned no file ID')
+
+                _audit_log(
+                    'gdrive_upload_success',
+                    filename=file.get('name'),
+                    file_id=file.get('id'),
+                    folder_id=file.get('parents', [folder_id])[0],
+                    attempt=attempt + 1,
+                )
+
+                return {
+                    'success': True,
+                    'id': file.get('id'),
+                    'name': file.get('name'),
+                    'view_link': file.get('webViewLink'),
+                    'mime_type': file.get('mimeType'),
+                    'parent_folder_id': file.get('parents', [None])[0],
+                }
+            except Exception as upload_e:
+                last_error = upload_e
+
+                if _is_non_retryable_gdrive_upload_error(upload_e):
+                    non_retryable_error = RuntimeError(_friendly_non_retryable_upload_error(upload_e))
+                    _audit_log(
+                        'gdrive_upload_non_retryable',
+                        filename=filename,
+                        folder_id=folder_id,
+                        attempt=attempt + 1,
+                        error=str(upload_e),
+                    )
+                    break
+
+                _audit_log(
+                    'gdrive_upload_retry',
+                    filename=filename,
+                    folder_id=folder_id,
+                    attempt=attempt + 1,
+                    error=str(upload_e),
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(1 * (attempt + 1))
+
+        if non_retryable_error is not None:
+            raise non_retryable_error
+
+        raise last_error or RuntimeError('Upload failed after retries')
+    except Exception as e:
+        error_msg = f'Upload failed: {e}'
+        _audit_log('gdrive_upload_error', filename=filename, folder_id=folder_id, error=error_msg)
+        return {
+            'success': False,
+            'error': error_msg,
+            'non_retryable': (non_retryable_error is not None) or _is_non_retryable_gdrive_upload_error(e),
+        }
+
+
+def save_file_to_gdrive(file_path, filename, folder_id, add_timestamp=True, max_retries=3):
+    """Upload a local file path to Drive while preserving original bytes and mime type."""
+    with open(file_path, 'rb') as f:
+        file_bytes = f.read()
+    mime_type = mimetypes.guess_type(file_path)[0] or 'application/octet-stream'
+    return save_bytes_to_gdrive(
+        file_bytes=file_bytes,
+        filename=filename,
+        folder_id=folder_id,
+        mime_type=mime_type,
+        add_timestamp=add_timestamp,
+        max_retries=max_retries,
+    )
+
+
 def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, max_retries=3):
     non_retryable_error = None
 
@@ -723,7 +1064,7 @@ def save_image_to_gdrive(image_array, filename, folder_id, add_timestamp=True, m
                 f"Google Drive upload blocked: upload folder is unavailable ({target_profile.get('error')})."
             )
 
-        if not target_profile.get('is_shared_drive'):
+        if _ACTIVE_DRIVE_AUTH_MODE == 'service_account' and not target_profile.get('is_shared_drive'):
             raise RuntimeError(
                 'Google Drive upload blocked: target folder is not in a Shared Drive. '
                 'Service-account uploads to non-shared-drive folders can fail with storage quota limits. '
@@ -897,6 +1238,11 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         result['error'] = f'Could not load test image: {e}'
         return result
 
+    try:
+        test_color, _ = load_image_for_upload(test_img_source)
+    except Exception:
+        test_color = cv2.cvtColor(test_gray, cv2.COLOR_GRAY2BGR)
+
     with _SIFT_DETECT_LOCK:
         _, desc_test = sift.detectAndCompute(test_gray, None)
 
@@ -970,7 +1316,6 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
             'gdrive_view_link': best_entry.get('gdrive_view_link'),
         }
 
-        test_color = cv2.cvtColor(test_gray, cv2.COLOR_GRAY2BGR)
         cv2.putText(
             test_color,
             f"Match: {best_entry['name']} | Score: {best_good} | Ratio: {best_ratio:.3f}",
@@ -1017,13 +1362,23 @@ def main():
     parser = argparse.ArgumentParser(description='SIFT database training and matching')
     parser.add_argument(
         '--mode',
-        choices=['train_local', 'train_gdrive', 'train_url', 'detect'],
+        choices=['train_local', 'train_gdrive', 'train_url', 'detect', 'auth_update'],
         default='detect',
     )
     parser.add_argument('--source', type=str, help='Source folder URL/path/image URL')
     parser.add_argument('--test_img', type=str, help='Test image path/URL for detection')
     parser.add_argument('--output_folder', type=str, help='Drive folder ID for match outputs')
+    parser.add_argument(
+        '--print_oauth_token_b64',
+        action='store_true',
+        help='Print token.pickle as base64 for GOOGLE_OAUTH_TOKEN_B64 env usage',
+    )
     args = parser.parse_args()
+
+    if args.mode == 'auth_update':
+        result = update_oauth_authentication(print_token_b64=args.print_oauth_token_b64)
+        print(json.dumps(result, indent=2))
+        return
 
     database = load_database()
 

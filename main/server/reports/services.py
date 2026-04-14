@@ -1,7 +1,7 @@
 from models.reports_model import Reports, db
 from models.pending_claims_model import PendingClaims
 from models.found_items_model import FoundItems
-from sift.services import process_image_for_report
+from sift.services import process_image_for_report, archive_returned_item_images
 from datetime import datetime, timezone
 
 def submit_report(data, image_url=None):
@@ -154,6 +154,28 @@ def update_report_status(report_id, new_status):
     db.session.commit()
     return report, None
 
+
+def _archive_matched_report_images(report_status, report_image, matched_image_source):
+    """Move matched report images out of active folders into returned folders."""
+    normalized_status = (report_status or '').strip().lower()
+    if normalized_status == 'lost':
+        return archive_returned_item_images(
+            lost_image_sources=[report_image],
+            found_image_sources=[matched_image_source],
+        )
+    if normalized_status == 'found':
+        return archive_returned_item_images(
+            lost_image_sources=[matched_image_source],
+            found_image_sources=[report_image],
+        )
+    return {
+        'success': False,
+        'moved_files': 0,
+        'removed_db_entries': 0,
+        'details': [],
+        'error': f'Unsupported report status for archiving: {report_status}',
+    }
+
 def process_report_with_image_url(image_url, data, new_report):
     """
     Process lost item report image and create pending claim if match found.
@@ -184,6 +206,8 @@ def process_report_with_image_url(image_url, data, new_report):
     matched_name = result.get("matched_image", {}).get("name")
     matched_source = result.get("matched_image", {}).get("source_url")
     matched_gdrive_id = result.get("matched_image", {}).get("gdrive_file_id")
+    public_copy = result.get("public_copy", {}) or {}
+    public_view_link = public_copy.get("gdrive_view_link")
     match_score = result.get("matched_image", {}).get("match_score", 0)
 
     print(f"Match found: {matched_name} (Score: {match_score})")
@@ -192,6 +216,12 @@ def process_report_with_image_url(image_url, data, new_report):
     report_id = new_report.report_id
 
     try:
+        # Route source/matched images into their respective returned folders when a match is approved.
+        archive_result = _archive_matched_report_images(report_status, image_url, matched_source)
+
+        if not archive_result.get("success", False):
+            print(f"Archive warning: {archive_result}")
+
         new_claim = PendingClaims(
             report_id=report_id,
             student_name=data.get('student_name'),
@@ -199,7 +229,7 @@ def process_report_with_image_url(image_url, data, new_report):
             contact_info=data.get('contact_info'),
             description=data.get('description', ''),
             status='pending',
-            image=matched_source or matched_gdrive_id or image_url
+            image=public_view_link or matched_source or matched_gdrive_id or image_url
         )
         db.session.add(new_claim)
         db.session.commit()
@@ -233,6 +263,10 @@ def create_pending_claim_for_existing_report(report_id, data, matched_image_sour
         return None, "You have already submitted a claim for this matched report"
 
     try:
+        archive_result = _archive_matched_report_images(report.status, report.image, matched_image_source)
+        if not archive_result.get('success', False):
+            print(f"Archive warning for existing report: {archive_result}")
+
         new_claim = PendingClaims(
             report_id=report_id,
             student_name=student_name,

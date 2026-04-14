@@ -120,6 +120,7 @@ def get_pending_claims():
                     'description': report.description,
                     'location': report.location,
                     'image': report.image,
+                    'public_match_link': report.image,
                     'status': report.status,
                 }
 
@@ -302,6 +303,7 @@ def get_claim(claim_id):
         report = Reports.query.get(claim.report_id)
         if report:
             claim_data['report'] = report.to_json()
+            claim_data['report']['public_match_link'] = report.image
 
             found_item = FoundItems.query.filter_by(report_id=report.report_id).first()
             if found_item:
