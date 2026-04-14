@@ -1,9 +1,10 @@
 // client/src/routes/admin/index.tsx
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Mail, Lock, Eye, Shield, Loader2 } from 'lucide-react'
 import { authApi } from '../../services/api'
+import { hasValidAdminSession } from '../../utils/adminAuth'
 
 export const Route = createFileRoute('/admin/')({
   component: AdminLogin,
@@ -14,6 +15,13 @@ function AdminLogin() {
   const [form, setForm] = useState({ email: '', password: '' })
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+
+  // Check for existing valid session on mount
+  useEffect(() => {
+    if (hasValidAdminSession()) {
+      navigate({ to: '/admin/dashboard' })
+    }
+  }, [navigate])
 
   const loginMutation = useMutation({
     mutationFn: () => authApi.login(form.email, form.password),
