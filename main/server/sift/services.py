@@ -208,39 +208,6 @@ def train_model(gdrive_url):
     return _run_sift_job('train_model', _job)
 
 
-def retrain_model_for_status(report_status: str):
-    """Rebuild a specific status dataset DB from its mapped Drive folder."""
-    normalized_status = (report_status or '').strip().lower()
-    if normalized_status not in ('lost', 'found'):
-        return {
-            "success": False,
-            "error": "status must be either 'lost' or 'found'"
-        }
-
-    db_file = _db_file_for_target_status(normalized_status)
-    folder_url = _folder_url_for_target_status(normalized_status)
-
-    def _job():
-        try:
-            with _sift_db_context(db_file):
-                result = sift.build_database_from_gdrive(folder_url)
-            return {
-                "success": True,
-                "status": normalized_status,
-                "images_processed": len(result),
-                "database_location": db_file,
-                "source_folder": folder_url,
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "status": normalized_status,
-                "error": str(e),
-            }
-
-    return _run_sift_job(f'retrain_{normalized_status}', _job)
-
-
 def get_drive_health_status():
     """
     Validate Drive auth and required folder accessibility for diagnostics.

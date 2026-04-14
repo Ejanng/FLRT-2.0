@@ -78,7 +78,6 @@ export const Route = createFileRoute('/admin/dashboard/')({
 function DashboardPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [retrainMessage, setRetrainMessage] = useState('')
   const [webhookTestResult, setWebhookTestResult] = useState<WebhookTestResponse | null>(null)
   const [webhookTestMessage, setWebhookTestMessage] = useState('')
   const [driveHealthResult, setDriveHealthResult] = useState<DriveHealthResponse | null>(null)
@@ -219,18 +218,6 @@ function DashboardPage() {
     refetchReports()
   }
 
-  const retrainMutation = useMutation({
-    mutationFn: (status: 'lost' | 'found') => siftApi.retrainByStatus(status),
-    onSuccess: (_data, status) => {
-      setRetrainMessage(`Retrained ${status} dataset successfully.`)
-      setTimeout(() => setRetrainMessage(''), 3000)
-    },
-    onError: (error: any) => {
-      setRetrainMessage(error?.message || 'Failed to retrain dataset')
-      setTimeout(() => setRetrainMessage(''), 4000)
-    },
-  })
-
   const webhookTestMutation = useMutation({
     mutationFn: () => siftApi.testWebhooks() as Promise<WebhookTestResponse>,
     onSuccess: (data) => {
@@ -299,22 +286,6 @@ function DashboardPage() {
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 sm:justify-end">
             <button
-              onClick={() => retrainMutation.mutate('lost')}
-              disabled={retrainMutation.isPending}
-              className="px-2.5 py-1 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-              title="Retrain lost dataset"
-            >
-              {retrainMutation.isPending ? 'Working...' : 'Retrain Lost DB'}
-            </button>
-            <button
-              onClick={() => retrainMutation.mutate('found')}
-              disabled={retrainMutation.isPending}
-              className="px-2.5 py-1 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-              title="Retrain found dataset"
-            >
-              {retrainMutation.isPending ? 'Working...' : 'Retrain Found DB'}
-            </button>
-            <button
               onClick={handleManualRefresh}
               disabled={statsLoading || reportsLoading}
               className="flex items-center gap-2 px-4 py-2 text-[#0217f7] border border-[#0217f7] rounded-xl hover:bg-[#0217f7] hover:text-white transition-all disabled:opacity-50"
@@ -345,9 +316,6 @@ function DashboardPage() {
             </button>
           </div>
         </div>
-        {retrainMessage && (
-          <p className="text-xs text-[#0217f7] -mt-3">{retrainMessage}</p>
-        )}
         {webhookTestMessage && (
           <p className="text-xs text-[#0217f7] -mt-2">{webhookTestMessage}</p>
         )}

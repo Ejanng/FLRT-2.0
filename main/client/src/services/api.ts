@@ -147,10 +147,6 @@ export const siftApi = {
     body: JSON.stringify({ gdrive_url: gdriveUrl }),
   }),
   driveHealth: () => fetchWithAuth('/sift/admin/drive-health'),
-  retrainByStatus: (status: 'lost' | 'found') => fetchWithAuth('/sift/admin/retrain', {
-    method: 'POST',
-    body: JSON.stringify({ status }),
-  }),
   testWebhooks: () => fetchWithAuth('/sift/admin/test-webhooks', {
     method: 'POST',
   }),
