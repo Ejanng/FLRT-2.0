@@ -257,6 +257,20 @@ function DashboardPage() {
     return () => window.removeEventListener('storage', handleStorage)
   }, [queryClient])
 
+  // Auto-clear webhook test result after 15 seconds
+  useEffect(() => {
+    if (!webhookTestResult) return
+    const timer = setTimeout(() => setWebhookTestResult(null), 15000)
+    return () => clearTimeout(timer)
+  }, [webhookTestResult])
+
+  // Auto-clear drive health result after 15 seconds
+  useEffect(() => {
+    if (!driveHealthResult) return
+    const timer = setTimeout(() => setDriveHealthResult(null), 15000)
+    return () => clearTimeout(timer)
+  }, [driveHealthResult])
+
   return (
     <div className="min-h-screen p-3 sm:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
