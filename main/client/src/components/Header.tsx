@@ -2,7 +2,7 @@ import { Link, useLocation } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Menu, X, Home, FileText, Search, Info } from 'lucide-react'
 
-const SYSTEM_VERSION = import.meta.env.VITE_SYSTEM_VERSION || 'v04-14-26.1.0'
+const SYSTEM_VERSION = import.meta.env.VITE_SYSTEM_VERSION || 'v0'
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false)

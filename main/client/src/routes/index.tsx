@@ -1,12 +1,13 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { FileText, Search, ArrowRight, Sparkles, Loader2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const getApiBaseUrl = () => import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
-const fetchStatistics = async () => {
-  const response = await axios.get(`${API_BASE_URL}/stats/dashboard`)
+const fetchStatistics = async (apiBaseUrl: string) => {
+  const response = await axios.get(`${apiBaseUrl}/stats/dashboard`)
   return response.data.stats
 }
 
@@ -16,10 +17,16 @@ export const Route = createFileRoute('/')({
 
 function Home() {
   const navigate = useNavigate()
+  const [apiBaseUrl, setApiBaseUrl] = useState<string>('')
+
+  useEffect(() => {
+    setApiBaseUrl(getApiBaseUrl())
+  }, [])
 
   const { data: stats, isLoading, error } = useQuery({
-    queryKey: ['statistics'],
-    queryFn: fetchStatistics,
+    queryKey: ['statistics', apiBaseUrl],
+    queryFn: () => fetchStatistics(apiBaseUrl),
+    enabled: !!apiBaseUrl,
     refetchInterval: 30000,
     staleTime: 10000,
   })

@@ -210,7 +210,13 @@ export default function ReportForm({ initialData }: ReportFormProps) {
     setIsBusyNotice(false)
     setShowStatusPopup(false)
 
-    if (formData.status === 'found' && (!formData.studentName || !formData.studentNumber || !formData.contactInfo)) {
+    const requiresPersonalInfo = formData.status === 'found' || formData.status === 'lost'
+    const missingPersonalInfo = !formData.studentName || !formData.studentNumber || !formData.contactInfo
+
+    if (requiresPersonalInfo && missingPersonalInfo) {
+      // Ensure this is treated as a fresh personal-info capture flow.
+      setMatchResult(null)
+      setPendingExistingReportId(null)
       setPendingData(formData)
       setShowModal(true)
       return
@@ -223,6 +229,16 @@ export default function ReportForm({ initialData }: ReportFormProps) {
     formDataToSend.append('location', formData.location)
     formDataToSend.append('date', formData.date)
     formDataToSend.append('time', formData.time || '')
+
+    if (formData.studentName) {
+      formDataToSend.append('student_name', formData.studentName)
+    }
+    if (formData.studentNumber) {
+      formDataToSend.append('student_number', formData.studentNumber)
+    }
+    if (formData.contactInfo) {
+      formDataToSend.append('contact_info', formData.contactInfo)
+    }
     
     if (formData.photo) {
       formDataToSend.append('image', formData.photo)
