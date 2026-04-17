@@ -25,10 +25,10 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 
 # Matching strictness thresholds (env configurable)
-MIN_MATCH_COUNT = max(1, int(os.getenv('SIFT_MIN_MATCH_COUNT', '20')))
-LOWE_RATIO_TEST = float(os.getenv('SIFT_LOWE_RATIO', '0.85'))
-MIN_MATCH_RATIO = float(os.getenv('SIFT_MIN_MATCH_RATIO', '0.08'))
-SECOND_BEST_MATCH_MULTIPLIER = float(os.getenv('SIFT_SECOND_BEST_MULTIPLIER', '1.15'))
+MIN_MATCH_COUNT = max(1, int(os.getenv('SIFT_MIN_MATCH_COUNT', '30')))
+LOWE_RATIO_TEST = float(os.getenv('SIFT_LOWE_RATIO', '0.75'))
+MIN_MATCH_RATIO = float(os.getenv('SIFT_MIN_MATCH_RATIO', '0.15'))
+SECOND_BEST_MATCH_MULTIPLIER = float(os.getenv('SIFT_SECOND_BEST_MULTIPLIER', '1.5'))
 
 # Setup paths
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1182,7 +1182,7 @@ def _normalize_database_entries(database: List[Any]) -> List[Dict[str, Any]]:
 
 def _score_entry(desc_test: np.ndarray, entry_dict: Dict[str, Any]):
     desc_train = entry_dict.get('descriptors')
-    if desc_train is None or len(desc_train) < 2:
+    if desc_train is None or len(desc_train) < 10:
         return entry_dict, {'good_matches': 0, 'match_ratio': 0.0}
 
     try:
@@ -1248,6 +1248,11 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
 
     if desc_test is None:
         result['error'] = 'No features in test image'
+        return result
+
+    # Require minimum features for reliable matching
+    if len(desc_test) < 10:
+        result['error'] = f'Insufficient features in test image ({len(desc_test)} < 10)'
         return result
 
     normalized_entries = _normalize_database_entries(database)
@@ -1347,25 +1352,16 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
     if best_entry and passes_min_count and passes_match_ratio and passes_second_best_gap:
         _set_match_result(best_entry)
     else:
-        fallback_min_count = max(8, MIN_MATCH_COUNT // 2)
-        fallback_min_ratio = min(0.06, MIN_MATCH_RATIO * 0.75)
-        fallback_second_best_gap = second_best_good == 0 or best_good >= (second_best_good * 1.10)
-
-        if best_entry and best_good >= fallback_min_count and best_ratio >= fallback_min_ratio and fallback_second_best_gap:
-            result['error'] = None
-            result['fallback_match'] = True
-            _set_match_result(best_entry)
-        else:
-            reasons = []
-            if not passes_min_count:
-                reasons.append(f'score {best_good} < min {MIN_MATCH_COUNT}')
-            if not passes_match_ratio:
-                reasons.append(f'ratio {best_ratio:.3f} < min {MIN_MATCH_RATIO:.3f}')
-            if not passes_second_best_gap:
-                reasons.append(
-                    f'best {best_good} is too close to second {second_best_good} (need x{SECOND_BEST_MATCH_MULTIPLIER:.2f})'
-                )
-            result['error'] = f"No match found ({'; '.join(reasons) if reasons else 'no qualifying match'})"
+        reasons = []
+        if not passes_min_count:
+            reasons.append(f'score {best_good} < min {MIN_MATCH_COUNT}')
+        if not passes_match_ratio:
+            reasons.append(f'ratio {best_ratio:.3f} < min {MIN_MATCH_RATIO:.3f}')
+        if not passes_second_best_gap:
+            reasons.append(
+                f'best {best_good} is too close to second {second_best_good} (need x{SECOND_BEST_MATCH_MULTIPLIER:.2f})'
+            )
+        result['error'] = f"No match found ({'; '.join(reasons) if reasons else 'no qualifying match'})"
 
     return result
 

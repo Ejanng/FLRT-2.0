@@ -347,10 +347,12 @@ def process_image_for_report(image_url, report_status):
     
     Returns organized match results with proper error handling.
     """
-    _log("[MATCH] starting image matching workflow")
+    print(f"[MATCH] starting image matching workflow for report_status={report_status}")
+    _log("[MATCH] starting image matching workflow", force=True)
     
     normalized_status = (report_status or '').strip().lower()
-    _log(f"[MATCH] report status={normalized_status}")
+    print(f"[MATCH] normalized report status={normalized_status}")
+    _log(f"[MATCH] report status={normalized_status}", force=True)
     
     if normalized_status not in ('lost', 'found'):
         return {
@@ -359,7 +361,8 @@ def process_image_for_report(image_url, report_status):
         }
 
     target_status = 'lost' if normalized_status == 'found' else 'found'
-    _log(f"[MATCH] target status={target_status}")
+    print(f"[MATCH] target_status={target_status}")
+    _log(f"[MATCH] target status={target_status}", force=True)
 
     try:
         def _job():
@@ -378,6 +381,7 @@ def process_image_for_report(image_url, report_status):
             
             if not database:
                 _log(f"[MATCH ERROR] {target_status} database not available", force=True)
+                print(f"[MATCH] no database available for target_status={target_status}")
                 return {
                     "success": False,
                     "error": f"No {target_status} database available for matching. Admin needs to retrain."
@@ -386,7 +390,8 @@ def process_image_for_report(image_url, report_status):
                     "error": "Public copy skipped because no match database is available",
                 }, db_file
 
-            _log(f"[MATCH] database ready with {len(database)} items")
+            print(f"[MATCH] database ready with {len(database)} items for target_status={target_status}")
+            _log(f"[MATCH] database ready with {len(database)} items", force=True)
             
             # Validate configured match-results folder access.
             output_folder_id = _ensure_folder_ready(

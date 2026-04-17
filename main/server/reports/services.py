@@ -211,7 +211,9 @@ def process_report_with_image_url(image_url, data, new_report):
     Process lost item report image and create pending claim if match found.
     """
     report_status = data.get('status')
+    print(f"[REPORT SERVICE] process_report_with_image_url called for status={report_status}, image_url={image_url}")
     result = process_image_for_report(image_url, report_status)
+    print(f"[REPORT SERVICE] process_image_for_report returned: {result}")
 
     if not result:
         return None, "Image processing failed", "Error", None
