@@ -25,10 +25,10 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 
 # Matching strictness thresholds (env configurable)
-MIN_MATCH_COUNT = max(1, int(os.getenv('SIFT_MIN_MATCH_COUNT', '40')))
-LOWE_RATIO_TEST = float(os.getenv('SIFT_LOWE_RATIO', '0.7'))
-MIN_MATCH_RATIO = float(os.getenv('SIFT_MIN_MATCH_RATIO', '0.12'))
-SECOND_BEST_MATCH_MULTIPLIER = float(os.getenv('SIFT_SECOND_BEST_MULTIPLIER', '1.25'))
+MIN_MATCH_COUNT = max(1, int(os.getenv('SIFT_MIN_MATCH_COUNT', '20')))
+LOWE_RATIO_TEST = float(os.getenv('SIFT_LOWE_RATIO', '0.85'))
+MIN_MATCH_RATIO = float(os.getenv('SIFT_MIN_MATCH_RATIO', '0.08'))
+SECOND_BEST_MATCH_MULTIPLIER = float(os.getenv('SIFT_SECOND_BEST_MULTIPLIER', '1.15'))
 
 # Setup paths
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1304,21 +1304,21 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         second_best_good == 0 or best_good >= (second_best_good * SECOND_BEST_MATCH_MULTIPLIER)
     )
 
-    if best_entry and passes_min_count and passes_match_ratio and passes_second_best_gap:
+    def _set_match_result(entry):
         result['success'] = True
-        result['best_match'] = best_entry['name']
+        result['best_match'] = entry['name']
         result['match_score'] = best_good
         result['matched_image'] = {
-            'name': best_entry['name'],
-            'source_url': best_entry.get('source_url'),
-            'source_type': best_entry.get('source_type', 'unknown'),
-            'gdrive_file_id': best_entry.get('gdrive_file_id'),
-            'gdrive_view_link': best_entry.get('gdrive_view_link'),
+            'name': entry['name'],
+            'source_url': entry.get('source_url'),
+            'source_type': entry.get('source_type', 'unknown'),
+            'gdrive_file_id': entry.get('gdrive_file_id'),
+            'gdrive_view_link': entry.get('gdrive_view_link'),
         }
 
         cv2.putText(
             test_color,
-            f"Match: {best_entry['name']} | Score: {best_good} | Ratio: {best_ratio:.3f}",
+            f"Match: {entry['name']} | Score: {best_good} | Ratio: {best_ratio:.3f}",
             (10, 35),
             cv2.FONT_HERSHEY_COMPLEX,
             0.7,
@@ -1329,7 +1329,7 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         if output_gdrive_folder_id:
             upload_result = save_image_to_gdrive(
                 test_color,
-                f"match_{best_entry['name']}.jpg",
+                f"match_{entry['name']}.jpg",
                 output_gdrive_folder_id,
                 add_timestamp=True,
                 max_retries=3,
@@ -1343,17 +1343,29 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
                 result['query_image']['gdrive_view_link'] = upload_result.get('view_link')
             else:
                 result['error'] = f"Match found but GDrive save failed: {upload_result.get('error')}"
+
+    if best_entry and passes_min_count and passes_match_ratio and passes_second_best_gap:
+        _set_match_result(best_entry)
     else:
-        reasons = []
-        if not passes_min_count:
-            reasons.append(f'score {best_good} < min {MIN_MATCH_COUNT}')
-        if not passes_match_ratio:
-            reasons.append(f'ratio {best_ratio:.3f} < min {MIN_MATCH_RATIO:.3f}')
-        if not passes_second_best_gap:
-            reasons.append(
-                f'best {best_good} is too close to second {second_best_good} (need x{SECOND_BEST_MATCH_MULTIPLIER:.2f})'
-            )
-        result['error'] = f"No match found ({'; '.join(reasons) if reasons else 'no qualifying match'})"
+        fallback_min_count = max(8, MIN_MATCH_COUNT // 2)
+        fallback_min_ratio = min(0.06, MIN_MATCH_RATIO * 0.75)
+        fallback_second_best_gap = second_best_good == 0 or best_good >= (second_best_good * 1.10)
+
+        if best_entry and best_good >= fallback_min_count and best_ratio >= fallback_min_ratio and fallback_second_best_gap:
+            result['error'] = None
+            result['fallback_match'] = True
+            _set_match_result(best_entry)
+        else:
+            reasons = []
+            if not passes_min_count:
+                reasons.append(f'score {best_good} < min {MIN_MATCH_COUNT}')
+            if not passes_match_ratio:
+                reasons.append(f'ratio {best_ratio:.3f} < min {MIN_MATCH_RATIO:.3f}')
+            if not passes_second_best_gap:
+                reasons.append(
+                    f'best {best_good} is too close to second {second_best_good} (need x{SECOND_BEST_MATCH_MULTIPLIER:.2f})'
+                )
+            result['error'] = f"No match found ({'; '.join(reasons) if reasons else 'no qualifying match'})"
 
     return result
 
