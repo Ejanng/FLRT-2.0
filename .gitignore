@@ -38,11 +38,14 @@ sift_database.pkl
 # ===============================
 
 # Node modules
-frontend/node_modules/
+client/node_modules/
 
 # Build output
-frontend/dist/
-frontend/build/
+client/dist/
+client/build/
+
+# markdown
+*.md
 
 # Optional npm debug log
 npm-debug.log*

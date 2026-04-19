@@ -33,6 +33,10 @@ def validate_uploaded_image(image_file: Optional[FileStorage]) -> Tuple[bool, Op
     if mime_type not in ALLOWED_IMAGE_MIME_TYPES:
         return False, 'Invalid file type. Please upload a valid JPG or PNG image.'
 
+    if hasattr(image_file, 'content_length') and image_file.content_length is not None:
+        if image_file.content_length > 5 * 1024 * 1024:
+            return False, 'Image must be 5 MB or smaller.'
+
     stream = image_file.stream
     current_pos = stream.tell()
     try:
