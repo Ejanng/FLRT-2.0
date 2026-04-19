@@ -216,6 +216,16 @@ export default function ReportForm({ initialData }: ReportFormProps) {
     setIsBusyNotice(false)
     setShowStatusPopup(false)
 
+    // Validate date and time are not in the future
+    const selectedDateTime = new Date(`${formData.date}T${formData.time || '00:00'}`)
+    const now = new Date()
+    if (selectedDateTime > now) {
+      setSubmitStatus('error')
+      setSubmitMessage('Date and time cannot be in the future.')
+      setShowStatusPopup(true)
+      return
+    }
+
     const requiresPersonalInfo = formData.status === 'found' || formData.status === 'lost'
     const missingPersonalInfo = !formData.studentName || !formData.studentNumber || !formData.contactInfo
 
@@ -396,6 +406,7 @@ export default function ReportForm({ initialData }: ReportFormProps) {
               value={formData.date}
               onChange={handleInputChange}
               required
+              max={getTodayDateString()}
               className="input-field"
             />
           </div>
