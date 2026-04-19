@@ -1309,6 +1309,10 @@ def detect_from_database(test_img_source, database, output_gdrive_folder_id=None
         second_best_good == 0 or best_good >= (second_best_good * SECOND_BEST_MATCH_MULTIPLIER)
     )
 
+    _log(f"[SIFT DEBUG] Best match: score={best_good}, ratio={best_ratio:.3f}, second_best={second_best_good}", force=True)
+    _log(f"[SIFT DEBUG] Thresholds: min_count={MIN_MATCH_COUNT}, min_ratio={MIN_MATCH_RATIO:.3f}, multiplier={SECOND_BEST_MATCH_MULTIPLIER:.2f}", force=True)
+    _log(f"[SIFT DEBUG] Passes: count={passes_min_count}, ratio={passes_match_ratio}, gap={passes_second_best_gap}", force=True)
+
     def _set_match_result(entry):
         result['success'] = True
         result['best_match'] = entry['name']

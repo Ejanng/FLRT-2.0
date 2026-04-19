@@ -341,6 +341,7 @@ def process_image_for_report(image_url, report_status):
     - found report -> match against lost DB
     - lost report -> match against found DB
 
+    The same SIFT algorithm is used symmetrically for both directions.
     If the required target DB is missing/corrupt, auto-build it from the
     mapped Drive folder so image-based report submissions can still match.
     Saves match visualization to match-results Drive folder.
@@ -419,6 +420,16 @@ def process_image_for_report(image_url, report_status):
                     "success": False,
                     "error": "Public copy skipped due to matching error",
                 }, db_file
+            
+            # Log detailed match results for admin debugging
+            print(f"[MATCH DEBUG] Full result: {result}")
+            if result.get('all_matches'):
+                print(f"[MATCH DEBUG] All matches: {result['all_matches']}")
+            if result.get('success'):
+                print(f"[MATCH DEBUG] Best match: {result.get('matched_image')}, score: {result.get('match_score')}")
+            else:
+                print(f"[MATCH DEBUG] No match found, error: {result.get('error')}")
+            _log(f"[MATCH DEBUG] Match result: success={result.get('success')}, error={result.get('error')}", force=True)
             
             # If match found, copy to public folder for sharing
             public_copy = {"success": False, "error": "No match to share"}

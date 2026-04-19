@@ -278,11 +278,110 @@ Match test image against trained database.
 ```
 
 **Matching Algorithm:**
-1. Extract SIFT features from test image
-2. FLANN k-NN match (k=2) against all database images
-3. Apply Lowe's ratio test (0.75 threshold)
-4. Select image with most good matches
-5. Verify above `MIN_MATCH_COUNT` threshold
+1. Extract SIFT features from the query image to obtain `desc_test`.
+2. For each database image, match descriptors using FLANN with `k=2`.
+3. Apply Lowe's ratio test: accept a match only when the best descriptor distance is significantly better than the second-best.
+4. Count the number of "good" matches for each image.
+5. Compute a normalized match ratio using the smaller of the query and database descriptor counts.
+6. Choose the image with the highest good-match count, breaking ties by higher match ratio.
+7. Verify the top candidate passes the configured thresholds.
+
+### How the SIFT matching calculation works
+
+The code uses these exact steps when scoring each database entry:
+
+- Use `cv2.FlannBasedMatcher(...).knnMatch(desc_test, desc_train, k=2)` to get two nearest neighbors for every query descriptor.
+- For each returned pair `(m, n)`:
+  - Keep the match if `m.distance < LOWE_RATIO_TEST * n.distance`
+  - This is Lowe's ratio test, which rejects ambiguous matches where the second-best match is nearly as good as the best.
+- Count every accepted pair as one good match.
+- Compute the normalized match ratio as:
+
+```text
+match_ratio = good_matches / max(1, min(len(desc_test), len(desc_train)))
+```
+
+This ratio measures how many strong matches exist relative to the number of extracted features in the smaller image.
+
+### Simple conceptual flow
+
+- Extract descriptors from the query image and from each candidate database image.
+- For each query descriptor, find the two nearest candidate descriptors.
+- Use Lowe's ratio test to keep a match only when the best distance is clearly better than the second-best.
+- The number of remaining matches becomes the raw score for that database image.
+- Normalize that score by the smaller descriptor count to compute the match ratio.
+
+```
+query descriptor -> [best match d1, second-best match d2]
+                    keep if d1 < 0.75 * d2
+```
+
+### Thresholds used by `detect_from_database`
+
+The selected best match is accepted only if all of these are true:
+
+- `best_good >= MIN_MATCH_COUNT`
+- `best_ratio >= MIN_MATCH_RATIO`
+- `best_good >= second_best_good * SECOND_BEST_MATCH_MULTIPLIER`
+
+These thresholds protect against weak or ambiguous matches by requiring a minimum number of distinct correspondences, a minimum coverage ratio, and a clear gap between the best and second-best candidate.
+
+### Manual example
+
+Suppose the query image has 250 descriptors and a candidate database image has 300 descriptors.
+
+1. FLANN finds matches for each descriptor pair.
+2. After Lowe's ratio test, 80 good matches remain.
+3. The denominator is `min(250, 300) = 250`, so:
+
+```text
+match_ratio = 80 / 250 = 0.32
+```
+
+4. If the configured thresholds are:
+   - `MIN_MATCH_COUNT = 30`
+   - `MIN_MATCH_RATIO = 0.15`
+   - `SECOND_BEST_MATCH_MULTIPLIER = 1.5`
+
+Then this candidate passes the first two checks.
+
+5. If the second-best candidate has 50 good matches, the gap check is:
+
+```text
+80 >= 50 * 1.5  => 80 >= 75  => true
+```
+
+So this image would be accepted as the best match.
+
+If instead the candidate had only 25 good matches, it would fail because `25 < 30`.
+If it had 35 good matches but `match_ratio = 0.14`, it would fail the ratio threshold.
+
+### Comparison example: best vs second-best candidate
+
+Suppose two database candidates are evaluated against the same query image with 250 query descriptors.
+
+- Candidate A: 80 good matches, 300 train descriptors
+- Candidate B: 50 good matches, 220 train descriptors
+
+For Candidate A:
+```text
+match_ratio_A = 80 / min(250, 300) = 80 / 250 = 0.32
+```
+For Candidate B:
+```text
+match_ratio_B = 50 / min(250, 220) = 50 / 220 ≈ 0.227
+```
+
+Threshold checks:
+- Candidate A passes `MIN_MATCH_COUNT = 30` and `MIN_MATCH_RATIO = 0.15`
+- Candidate B also passes both thresholds, but has a lower score and ratio
+
+Gap check:
+```text
+80 >= 50 * 1.5  => 80 >= 75  => true
+```
+
+Because Candidate A has more good matches and a higher ratio, it is selected as the best match.
 
 **Example:**
 ```python
